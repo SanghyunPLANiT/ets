@@ -11,8 +11,7 @@ from urllib.parse import urlparse
 
 import pandas as pd
 
-from .config import EXAMPLES_DIR, FRONTEND_DIR, OUTPUT_DIR
-from .plotting import annual_equilibrium_plot_filename, market_plot_filename
+from .config import EXAMPLES_DIR, FRONTEND_PUBLIC_DIR, FRONTEND_SRC_DIR, OUTPUT_DIR
 from .scenarios import blank_config, build_markets_from_config, load_config
 from .simulation import run_simulation
 
@@ -66,7 +65,7 @@ def _decorate_frontend_config(config: dict, template_id: str) -> dict:
 def _build_dashboard_payload(config: dict) -> dict:
     frontend_config = _decorate_frontend_config(config, template_id="run")
     markets = build_markets_from_config(frontend_config)
-    summary_df, participant_df = run_simulation(markets, output_dir=OUTPUT_DIR)
+    summary_df, participant_df = run_simulation(markets, output_dir=OUTPUT_DIR, write_outputs=False)
 
     by_scenario: dict[str, dict[str, dict]] = {}
     scenario_market_map: dict[str, list] = {}
@@ -192,24 +191,15 @@ def _build_dashboard_payload(config: dict) -> dict:
     participant_records = participant_df.to_dict(orient="records")
     analysis = build_analysis(summary_df, participant_df)
 
-    annual_plots = [
-        f"/outputs/{annual_equilibrium_plot_filename(name)}"
-        for name in summary_df["Scenario"].drop_duplicates().tolist()
-    ]
-    market_plots = [
-        f"/outputs/{market_plot_filename(row['Scenario'], row.get('Year'))}"
-        for row in summary_records
-    ]
-
     return {
         "config": frontend_config,
         "results": by_scenario,
         "summary": summary_records,
         "participants": participant_records,
         "analysis": analysis,
-        "annual_plots": annual_plots,
-        "plots": market_plots,
-        "output_dir": str(OUTPUT_DIR),
+        "annual_plots": [],
+        "plots": [],
+        "output_dir": None,
     }
 
 
@@ -232,7 +222,7 @@ class ETSRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/":
-            self._serve_frontend_asset("index.html")
+            self._serve_public_asset("index.html")
             return
         if parsed.path == "/api/templates":
             self._write_json({"templates": _predefined_templates()})
@@ -244,8 +234,12 @@ class ETSRequestHandler(BaseHTTPRequestHandler):
             self._serve_output_asset(parsed.path.removeprefix("/outputs/"))
             return
 
+        if parsed.path.startswith("/src/"):
+            self._serve_src_asset(parsed.path.removeprefix("/src/"))
+            return
+
         relative_path = parsed.path.lstrip("/")
-        self._serve_frontend_asset(relative_path)
+        self._serve_public_asset(relative_path)
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
@@ -265,9 +259,19 @@ class ETSRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:
         return
 
-    def _serve_frontend_asset(self, relative_path: str) -> None:
-        safe_path = (FRONTEND_DIR / relative_path).resolve()
-        if FRONTEND_DIR.resolve() not in safe_path.parents and safe_path != FRONTEND_DIR.resolve():
+    def _serve_public_asset(self, relative_path: str) -> None:
+        safe_path = (FRONTEND_PUBLIC_DIR / relative_path).resolve()
+        if FRONTEND_PUBLIC_DIR.resolve() not in safe_path.parents and safe_path != FRONTEND_PUBLIC_DIR.resolve():
+            self.send_error(HTTPStatus.FORBIDDEN, "Forbidden")
+            return
+        if not safe_path.exists() or not safe_path.is_file():
+            self.send_error(HTTPStatus.NOT_FOUND, "File not found")
+            return
+        self._serve_file(safe_path)
+
+    def _serve_src_asset(self, relative_path: str) -> None:
+        safe_path = (FRONTEND_SRC_DIR / relative_path).resolve()
+        if FRONTEND_SRC_DIR.resolve() not in safe_path.parents and safe_path != FRONTEND_SRC_DIR.resolve():
             self.send_error(HTTPStatus.FORBIDDEN, "Forbidden")
             return
         if not safe_path.exists() or not safe_path.is_file():

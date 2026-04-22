@@ -354,7 +354,7 @@ class ScenarioEditorApp:
         try:
             self._save_current_scenario()
             markets = build_markets_from_config(self.config_data)
-            summary_df, participant_df = run_simulation(markets=markets, output_dir=OUTPUT_DIR)
+            summary_df, participant_df = run_simulation(markets=markets, output_dir=OUTPUT_DIR, write_outputs=False)
             messagebox.showinfo(
                 "Simulation Complete",
                 f"Saved results to:\n{OUTPUT_DIR}\n\n"

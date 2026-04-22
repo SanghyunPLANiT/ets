@@ -284,6 +284,56 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
 }
+.annual-metric-grid {
+  display: grid;
+  gap: 14px;
+}
+.annual-metric-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+  padding: 14px 16px 10px;
+}
+.annual-metric-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.annual-metric-title {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.annual-metric-unit {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.annual-metric-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.annual-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+.annual-metric-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.annual-axis-label {
+  font-size: 12px;
+}
 .chart-card {
   display: grid;
   gap: 10px;
@@ -298,6 +348,17 @@ body {
   background:
     linear-gradient(180deg, rgba(47, 111, 143, 0.06), rgba(47, 111, 143, 0) 42%),
     var(--panel-2);
+}
+.chart-card-button {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.chart-card-button.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(31, 111, 85, 0.16) inset;
 }
 .chart-card-head {
   display: flex;
@@ -380,6 +441,9 @@ body {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
+.auction-review-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .review-item {
   padding: 12px 14px;
   border: 1px solid var(--line);
@@ -387,6 +451,9 @@ body {
   background: var(--panel-2);
   display: grid;
   gap: 6px;
+}
+.review-item-wide {
+  grid-column: span 2;
 }
 .review-button {
   width: 100%;
@@ -1190,6 +1257,7 @@ html[data-chart="terminal"][data-theme="light"] { --panel: #fafaf7; --bg: #eeede
   .hdr-top { flex-direction: column; }
   .hdr-actions { max-width: none; justify-content: flex-start; }
   .review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .auction-review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 960px) {
   .cmp-grid { grid-template-columns: 1fr; }
@@ -1237,6 +1305,8 @@ html[data-chart="terminal"][data-theme="light"] { --panel: #fafaf7; --bg: #eeede
     grid-column: 2 / span 2;
   }
   .review-grid { grid-template-columns: 1fr; }
+  .auction-review-grid { grid-template-columns: 1fr; }
+  .review-item-wide { grid-column: auto; }
 }
 @media (max-width: 640px) {
   .builder-steps,

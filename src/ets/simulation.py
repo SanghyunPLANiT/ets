@@ -19,13 +19,14 @@ def _market_year_sort_key(market: CarbonMarket) -> tuple[float, str]:
 
 
 def run_simulation(
-    markets: list[CarbonMarket], output_dir: str | Path = OUTPUT_DIR
+    markets: list[CarbonMarket], output_dir: str | Path = OUTPUT_DIR, write_outputs: bool = True
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     if not markets:
         raise ValueError("At least one market scenario must be provided.")
 
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    output_path = Path(output_dir) if write_outputs else None
+    if output_path is not None:
+        output_path.mkdir(parents=True, exist_ok=True)
 
     grouped_markets: dict[str, list[CarbonMarket]] = defaultdict(list)
     for market in markets:
@@ -69,13 +70,14 @@ def run_simulation(
                 )
             )
             participant_frames.append(participant_df)
-            market.plot_market_balance(
-                equilibrium_price,
-                output_path,
-                bank_balances=bank_balances,
-                expected_future_price=expected_future_price,
-                auction_supply=float(equilibrium["auction_sold"]),
-            )
+            if output_path is not None:
+                market.plot_market_balance(
+                    equilibrium_price,
+                    output_path,
+                    bank_balances=bank_balances,
+                    expected_future_price=expected_future_price,
+                    auction_supply=float(equilibrium["auction_sold"]),
+                )
             carry_forward_allowances = (
                 float(equilibrium["unsold_allowances"])
                 if market.unsold_treatment == "carry_forward"
@@ -89,19 +91,20 @@ def run_simulation(
     summary_df = pd.DataFrame.from_records(scenario_summaries)
     participant_df = pd.concat(participant_frames, ignore_index=True)
 
-    summary_df.to_csv(output_path / "scenario_summary.csv", index=False)
-    participant_df.to_csv(output_path / "participant_results.csv", index=False)
-    plot_annual_equilibrium(summary_df, output_path)
+    if output_path is not None:
+        summary_df.to_csv(output_path / "scenario_summary.csv", index=False)
+        participant_df.to_csv(output_path / "participant_results.csv", index=False)
+        plot_annual_equilibrium(summary_df, output_path)
     return summary_df, participant_df
 
 
 def run_simulation_from_config(
-    config: dict, output_dir: str | Path = OUTPUT_DIR
+    config: dict, output_dir: str | Path = OUTPUT_DIR, write_outputs: bool = True
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    return run_simulation(build_markets_from_config(config), output_dir=output_dir)
+    return run_simulation(build_markets_from_config(config), output_dir=output_dir, write_outputs=write_outputs)
 
 
 def run_simulation_from_file(
-    config_path: str | Path, output_dir: str | Path = OUTPUT_DIR
+    config_path: str | Path, output_dir: str | Path = OUTPUT_DIR, write_outputs: bool = True
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    return run_simulation_from_config(load_config(config_path), output_dir=output_dir)
+    return run_simulation_from_config(load_config(config_path), output_dir=output_dir, write_outputs=write_outputs)

@@ -27,19 +27,19 @@ It is not yet a fully calibrated forecasting model for a real national ETS unles
 
 Core backend:
 
-- [ets/participant.py](/Users/sanghyun/github/particalequlibrium/ets/participant.py)
-- [ets/market.py](/Users/sanghyun/github/particalequlibrium/ets/market.py)
-- [ets/scenarios.py](/Users/sanghyun/github/particalequlibrium/ets/scenarios.py)
-- [ets/simulation.py](/Users/sanghyun/github/particalequlibrium/ets/simulation.py)
-- [ets/costs.py](/Users/sanghyun/github/particalequlibrium/ets/costs.py)
-- [ets/plotting.py](/Users/sanghyun/github/particalequlibrium/ets/plotting.py)
+- [src/ets/participant.py](/Users/sanghyun/github/particalequlibrium/src/ets/participant.py)
+- [src/ets/market.py](/Users/sanghyun/github/particalequlibrium/src/ets/market.py)
+- [src/ets/scenarios.py](/Users/sanghyun/github/particalequlibrium/src/ets/scenarios.py)
+- [src/ets/simulation.py](/Users/sanghyun/github/particalequlibrium/src/ets/simulation.py)
+- [src/ets/costs.py](/Users/sanghyun/github/particalequlibrium/src/ets/costs.py)
+- [src/ets/plotting.py](/Users/sanghyun/github/particalequlibrium/src/ets/plotting.py)
 
 Web UI:
 
-- [ets/webapp.py](/Users/sanghyun/github/particalequlibrium/ets/webapp.py)
-- [ets/frontend/clearing/app.jsx](/Users/sanghyun/github/particalequlibrium/ets/frontend/clearing/app.jsx)
-- [ets/frontend/clearing/components/Editor.jsx](/Users/sanghyun/github/particalequlibrium/ets/frontend/clearing/components/Editor.jsx)
-- [ets/frontend/clearing/styles.css](/Users/sanghyun/github/particalequlibrium/ets/frontend/clearing/styles.css)
+- [src/ets/webapp.py](/Users/sanghyun/github/particalequlibrium/src/ets/webapp.py)
+- [frontend/src/app.jsx](/Users/sanghyun/github/particalequlibrium/frontend/src/app.jsx)
+- [frontend/src/components/Editor.jsx](/Users/sanghyun/github/particalequlibrium/frontend/src/components/Editor.jsx)
+- [frontend/public/styles.css](/Users/sanghyun/github/particalequlibrium/frontend/public/styles.css)
 
 Entry points:
 
