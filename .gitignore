@@ -6,3 +6,4 @@ __pycache__/
 outputs/
 frontend/node_modules/
 tmp_template.json
+.vercel
