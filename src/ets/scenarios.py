@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .costs import linear_abatement_factory, piecewise_abatement_factory
+from .expectations import ALLOWED_EXPECTATION_RULES, validate_expectation_rule
 from .market import CarbonMarket
 from .participant import MarketParticipant, TechnologyOption
 
@@ -40,6 +41,8 @@ def blank_year_config() -> dict[str, Any]:
         "banking_allowed": False,
         "borrowing_allowed": False,
         "borrowing_limit": 0.0,
+        "expectation_rule": "next_year_baseline",
+        "manual_expected_price": 0.0,
         "participants": [],
     }
 
@@ -155,6 +158,13 @@ def normalize_year(raw_year: dict[str, Any]) -> dict[str, Any]:
         year_config.get("borrowing_allowed", False)
     )
     year_config["borrowing_limit"] = float(year_config.get("borrowing_limit", 0.0))
+    year_config["expectation_rule"] = validate_expectation_rule(
+        year_config.get("expectation_rule", "next_year_baseline"),
+        year_config["year"],
+    )
+    year_config["manual_expected_price"] = float(
+        year_config.get("manual_expected_price", 0.0)
+    )
 
     if year_config["auction_mode"] not in ALLOWED_AUCTION_MODES:
         raise ValueError(
@@ -177,6 +187,10 @@ def normalize_year(raw_year: dict[str, Any]) -> dict[str, Any]:
     if year_config["unsold_treatment"] not in {"reserve", "cancel", "carry_forward"}:
         raise ValueError(
             f"Year '{year_config['year']}' unsold_treatment must be one of reserve, cancel, carry_forward."
+        )
+    if year_config["manual_expected_price"] < 0.0:
+        raise ValueError(
+            f"Year '{year_config['year']}' manual_expected_price must be non-negative."
         )
 
     participants = year_config.get("participants", [])
@@ -374,6 +388,8 @@ def build_market_from_year(scenario_name: str, year_config: dict[str, Any]) -> C
         banking_allowed=year_config["banking_allowed"],
         borrowing_allowed=year_config["borrowing_allowed"],
         borrowing_limit=year_config["borrowing_limit"],
+        expectation_rule=year_config["expectation_rule"],
+        manual_expected_price=year_config["manual_expected_price"],
     )
 
 

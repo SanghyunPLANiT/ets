@@ -1,7 +1,7 @@
 // Components for the Clearing dashboard.
 // IEA / Our World in Data institutional aesthetic — serif display, grotesk body, sparse grid, honest ticks.
 
-const { useState, useEffect, useMemo, useRef, useCallback } = React;
+import { useState, useEffect, useMemo, useRef } from "react";
 
 // ---------- Utility ----------
 const fmt = {
@@ -27,7 +27,7 @@ const SECTOR_COLORS = {
 // Demand curve: total net demand as price varies.
 // Supply line: horizontal at Q (auctioned allowances). Draggable.
 // Stacked mode: show per-participant demand stacked.
-function MarketChart({ year, result, stacked, onDragSupply, sectorColors }) {
+export function MarketChart({ year, result, stacked, onDragSupply, sectorColors }) {
   const W = 680, H = 420;
   const PAD = { t: 28, r: 24, b: 44, l: 56 };
   const iw = W - PAD.l - PAD.r, ih = H - PAD.t - PAD.b;
@@ -191,6 +191,4 @@ function MarketChart({ year, result, stacked, onDragSupply, sectorColors }) {
   );
 }
 
-window.MarketChart = MarketChart;
-window.SECTOR_COLORS = SECTOR_COLORS;
-window.fmt = fmt;
+export { SECTOR_COLORS, fmt };

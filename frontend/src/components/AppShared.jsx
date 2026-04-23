@@ -1,4 +1,31 @@
-const { useState: useS, useEffect: useE } = React;
+import { useState as useS, useEffect as useE, useMemo as useM, useRef as useR } from "react";
+import { fmt } from "./MarketChart.jsx";
+
+const SERIES_FIELD_META = {
+  total_cap: { label: "Total cap", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
+  auction_offered: { label: "Auction offered", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
+  reserved_allowances: { label: "Reserved allowances", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
+  cancelled_allowances: { label: "Cancelled allowances", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
+  auction_reserve_price: { label: "Auction reserve price", step: 1, min: 0, format: (value) => fmt.price(value) },
+  minimum_bid_coverage: { label: "Minimum bid coverage", step: 0.05, min: 0, max: 2, format: (value) => fmt.num(value, 2) },
+  price_lower_bound: { label: "Price floor", step: 1, min: 0, format: (value) => fmt.price(value) },
+  price_upper_bound: { label: "Price ceiling", step: 1, min: 0, format: (value) => fmt.price(value) },
+  borrowing_limit: { label: "Borrowing limit", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
+  manual_expected_price: { label: "Manual expected price", step: 1, min: 0, format: (value) => fmt.price(value) },
+  initial_emissions: { label: "Initial emissions", step: 1, min: 0, format: (value) => fmt.num(value, 1) },
+  free_allocation_ratio: { label: "Free allocation ratio", step: 0.05, min: 0, max: 1, format: (value) => fmt.num(value, 2) },
+  penalty_price: { label: "Penalty price", step: 1, min: 0, format: (value) => fmt.price(value) },
+  fixed_cost: { label: "Fixed cost", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
+};
+
+function getSeriesFieldMeta(field) {
+  return SERIES_FIELD_META[field] || {
+    label: field.replaceAll("_", " "),
+    step: 1,
+    min: 0,
+    format: (value) => fmt.num(value, 2),
+  };
+}
 
 function makeBlankParticipant(index = 1) {
   return {
@@ -31,6 +58,8 @@ function makeBlankYear(label = "2030") {
     banking_allowed: false,
     borrowing_allowed: false,
     borrowing_limit: 0,
+    expectation_rule: "next_year_baseline",
+    manual_expected_price: 0,
     participants: [],
   };
 }
@@ -141,14 +170,14 @@ function buildAuctionPathway(scenario, results) {
   return { years, rows };
 }
 
-function makeIssue(level, scope, message) {
-  return { level, scope, message };
+function makeIssue(level, scope, message, target = null) {
+  return { level, scope, message, target };
 }
 
-function validateMacBlocks(blocks, label) {
+function validateMacBlocks(blocks, label, target = null) {
   const issues = [];
   if (!Array.isArray(blocks)) {
-    issues.push(makeIssue("error", label, "MAC blocks must be provided as a list."));
+    issues.push(makeIssue("error", label, "MAC blocks must be provided as a list.", target));
     return issues;
   }
   let previousCost = -Infinity;
@@ -156,89 +185,110 @@ function validateMacBlocks(blocks, label) {
     const amount = Number(block?.amount ?? 0);
     const cost = Number(block?.marginal_cost ?? 0);
     if (!Number.isFinite(amount) || !Number.isFinite(cost)) {
-      issues.push(makeIssue("error", label, `MAC block ${index + 1} must contain numeric amount and marginal cost.`));
+      issues.push(makeIssue("error", label, `MAC block ${index + 1} must contain numeric amount and marginal cost.`, target));
       return;
     }
     if (amount < 0 || cost < 0) {
-      issues.push(makeIssue("error", label, `MAC block ${index + 1} must be non-negative.`));
+      issues.push(makeIssue("error", label, `MAC block ${index + 1} must be non-negative.`, target));
     }
     if (cost < previousCost) {
-      issues.push(makeIssue("error", label, "MAC blocks must be ordered by non-decreasing marginal cost."));
+      issues.push(makeIssue("error", label, "MAC blocks must be ordered by non-decreasing marginal cost.", target));
     }
     previousCost = cost;
   });
   return issues;
 }
 
-function validateTechnology(option, scope) {
+function validateTechnology(option, scope, target = null) {
   const issues = [];
-  if (!option?.name) issues.push(makeIssue("error", scope, "Technology option must have a name."));
-  if (Number(option?.initial_emissions ?? 0) < 0) issues.push(makeIssue("error", scope, "Technology emissions must be non-negative."));
+  if (!option?.name) issues.push(makeIssue("error", scope, "Technology option must have a name.", target));
+  if (Number(option?.initial_emissions ?? 0) < 0) issues.push(makeIssue("error", scope, "Technology emissions must be non-negative.", target));
   if (Number(option?.free_allocation_ratio ?? 0) < 0 || Number(option?.free_allocation_ratio ?? 0) > 1) {
-    issues.push(makeIssue("error", scope, "Technology free allocation ratio must be between 0 and 1."));
+    issues.push(makeIssue("error", scope, "Technology free allocation ratio must be between 0 and 1.", target));
   }
-  if (Number(option?.penalty_price ?? 0) <= 0) issues.push(makeIssue("error", scope, "Technology penalty price must be positive."));
-  if (Number(option?.fixed_cost ?? 0) < 0) issues.push(makeIssue("error", scope, "Technology fixed cost must be non-negative."));
+  if (Number(option?.penalty_price ?? 0) <= 0) issues.push(makeIssue("error", scope, "Technology penalty price must be positive.", target));
+  if (Number(option?.fixed_cost ?? 0) < 0) issues.push(makeIssue("error", scope, "Technology fixed cost must be non-negative.", target));
   if (option?.abatement_type === "piecewise" && !(option?.mac_blocks || []).length) {
-    issues.push(makeIssue("error", scope, "Piecewise technology option requires MAC blocks."));
+    issues.push(makeIssue("error", scope, "Piecewise technology option requires MAC blocks.", target));
   }
-  issues.push(...validateMacBlocks(option?.mac_blocks || [], scope));
+  issues.push(...validateMacBlocks(option?.mac_blocks || [], scope, target));
   return issues;
 }
 
-function validateParticipant(participant, yearLabel) {
+function validateParticipant(participant, yearLabel, yearValue) {
   const scope = `${yearLabel} · ${participant?.name || "Unnamed participant"}`;
+  const participantTarget = {
+    section: "build",
+    step: "participants",
+    year: String(yearValue),
+    participantName: participant?.name || null,
+  };
   const issues = [];
-  if (!participant?.name) issues.push(makeIssue("error", scope, "Participant must have a name."));
+  if (!participant?.name) issues.push(makeIssue("error", scope, "Participant must have a name.", participantTarget));
   const emissions = Number(participant?.initial_emissions ?? 0);
   const freeRatio = Number(participant?.free_allocation_ratio ?? 0);
   const penalty = Number(participant?.penalty_price ?? 0);
-  if (emissions < 0) issues.push(makeIssue("error", scope, "Initial emissions must be non-negative."));
-  if (freeRatio < 0 || freeRatio > 1) issues.push(makeIssue("error", scope, "Free allocation ratio must be between 0 and 1."));
-  if (penalty <= 0) issues.push(makeIssue("error", scope, "Penalty price must be positive."));
+  if (emissions < 0) issues.push(makeIssue("error", scope, "Initial emissions must be non-negative.", participantTarget));
+  if (freeRatio < 0 || freeRatio > 1) issues.push(makeIssue("error", scope, "Free allocation ratio must be between 0 and 1.", participantTarget));
+  if (penalty <= 0) issues.push(makeIssue("error", scope, "Penalty price must be positive.", participantTarget));
   if (participant?.abatement_type === "piecewise" && !(participant?.mac_blocks || []).length) {
-    issues.push(makeIssue("error", scope, "Piecewise abatement requires MAC blocks."));
+    issues.push(makeIssue("error", scope, "Piecewise abatement requires MAC blocks.", participantTarget));
   }
   if ((participant?.technology_options || []).length > 0) {
     const techNames = new Set();
     participant.technology_options.forEach((option) => {
+      const technologyTarget = {
+        ...participantTarget,
+        technologyName: option?.name || null,
+      };
       if (techNames.has(option.name)) {
-        issues.push(makeIssue("warning", scope, `Duplicate technology option name '${option.name}'.`));
+        issues.push(makeIssue("warning", scope, `Duplicate technology option name '${option.name}'.`, technologyTarget));
       }
       techNames.add(option.name);
-      issues.push(...validateTechnology(option, `${scope} · ${option.name || "Unnamed technology"}`));
+      issues.push(...validateTechnology(option, `${scope} · ${option.name || "Unnamed technology"}`, technologyTarget));
     });
   }
-  issues.push(...validateMacBlocks(participant?.mac_blocks || [], scope));
+  issues.push(...validateMacBlocks(participant?.mac_blocks || [], scope, participantTarget));
   return issues;
 }
 
 function validateScenario(scenario) {
   const issues = [];
   if (!scenario) return issues;
-  if (!scenario.name) issues.push(makeIssue("error", "Scenario", "Scenario must have a name."));
-  if (!(scenario.years || []).length) issues.push(makeIssue("error", "Scenario", "Scenario must contain at least one year."));
+  if (!scenario.name) issues.push(makeIssue("error", "Scenario", "Scenario must have a name.", { section: "build", step: "scenario" }));
+  if (!(scenario.years || []).length) issues.push(makeIssue("error", "Scenario", "Scenario must contain at least one year.", { section: "build", step: "scenario" }));
   const seenYears = new Set();
   (scenario.years || []).forEach((year) => {
     const yearLabel = String(year?.year || "Unnamed year");
-    if (seenYears.has(yearLabel)) issues.push(makeIssue("error", `Year ${yearLabel}`, "Duplicate year label."));
+    const yearTarget = { section: "build", step: "market", year: yearLabel };
+    if (seenYears.has(yearLabel)) issues.push(makeIssue("error", `Year ${yearLabel}`, "Duplicate year label.", yearTarget));
     seenYears.add(yearLabel);
     const participants = year?.participants || [];
-    if (!participants.length) issues.push(makeIssue("warning", `Year ${yearLabel}`, "This year has no participants."));
+    if (!participants.length) issues.push(makeIssue("warning", `Year ${yearLabel}`, "This year has no participants.", yearTarget));
     const lower = Number(year?.price_lower_bound ?? 0);
     const upper = Number(year?.price_upper_bound ?? 0);
-    if (upper <= lower) issues.push(makeIssue("error", `Year ${yearLabel}`, "Price ceiling must be greater than price floor."));
+    if (upper <= lower) issues.push(makeIssue("error", `Year ${yearLabel}`, "Price ceiling must be greater than price floor.", yearTarget));
     if (year?.borrowing_allowed && Number(year?.borrowing_limit ?? 0) <= 0) {
-      issues.push(makeIssue("warning", `Year ${yearLabel}`, "Borrowing is enabled but borrowing limit is zero."));
+      issues.push(makeIssue("warning", `Year ${yearLabel}`, "Borrowing is enabled but borrowing limit is zero.", yearTarget));
+    }
+    const expectationRule = String(year?.expectation_rule ?? "next_year_baseline");
+    if (!["myopic", "next_year_baseline", "perfect_foresight", "manual"].includes(expectationRule)) {
+      issues.push(makeIssue("error", `Year ${yearLabel}`, "Expectation rule must be myopic, next_year_baseline, perfect_foresight, or manual.", yearTarget));
+    }
+    if (Number(year?.manual_expected_price ?? 0) < 0) {
+      issues.push(makeIssue("error", `Year ${yearLabel}`, "Manual expected price must be non-negative.", yearTarget));
+    }
+    if (expectationRule === "manual" && Number(year?.manual_expected_price ?? 0) <= 0) {
+      issues.push(makeIssue("warning", `Year ${yearLabel}`, "Manual expectation is selected but manual expected price is zero.", yearTarget));
     }
     if (Number(year?.auction_reserve_price ?? 0) < 0) {
-      issues.push(makeIssue("error", `Year ${yearLabel}`, "Auction reserve price must be non-negative."));
+      issues.push(makeIssue("error", `Year ${yearLabel}`, "Auction reserve price must be non-negative.", yearTarget));
     }
     if (Number(year?.minimum_bid_coverage ?? 0) < 0 || Number(year?.minimum_bid_coverage ?? 0) > 1) {
-      issues.push(makeIssue("error", `Year ${yearLabel}`, "Minimum bid coverage must be between 0 and 1."));
+      issues.push(makeIssue("error", `Year ${yearLabel}`, "Minimum bid coverage must be between 0 and 1.", yearTarget));
     }
     if (!["reserve", "cancel", "carry_forward"].includes(String(year?.unsold_treatment ?? "reserve"))) {
-      issues.push(makeIssue("error", `Year ${yearLabel}`, "Unsold treatment must be reserve, cancel, or carry_forward."));
+      issues.push(makeIssue("error", `Year ${yearLabel}`, "Unsold treatment must be reserve, cancel, or carry_forward.", yearTarget));
     }
     const freeAllocation = participants.reduce(
       (sum, participant) => sum + Number(participant?.initial_emissions ?? 0) * Number(participant?.free_allocation_ratio ?? 0),
@@ -251,25 +301,32 @@ function validateScenario(scenario) {
     if (year?.auction_mode === "explicit") {
       const allowanceSupply = freeAllocation + auctioned + reserved + cancelled;
       if (allowanceSupply - totalCap > 1e-6) {
-        issues.push(makeIssue("error", `Year ${yearLabel}`, `Free allocation + auction offered + reserved + cancelled allowances (${allowanceSupply.toFixed(2)}) exceeds total cap (${totalCap.toFixed(2)}).`));
+        issues.push(makeIssue("error", `Year ${yearLabel}`, `Free allocation + auction offered + reserved + cancelled allowances (${allowanceSupply.toFixed(2)}) exceeds total cap (${totalCap.toFixed(2)}).`, yearTarget));
       } else if (totalCap - allowanceSupply > 1e-6) {
-        issues.push(makeIssue("warning", `Year ${yearLabel}`, `Configured supply buckets leave ${(totalCap - allowanceSupply).toFixed(2)} allowances unallocated within the cap.`));
+        issues.push(makeIssue("warning", `Year ${yearLabel}`, `Configured supply buckets leave ${(totalCap - allowanceSupply).toFixed(2)} allowances unallocated within the cap.`, yearTarget));
       }
     }
-    if (reserved > 0) issues.push(makeIssue("note", `Year ${yearLabel}`, `Reserved allowances remove ${reserved.toFixed(2)} allowances from current-year circulation.`));
-    if (cancelled > 0) issues.push(makeIssue("note", `Year ${yearLabel}`, `Cancelled allowances permanently retire ${cancelled.toFixed(2)} allowances from the cap.`));
-    if ((year?.auction_reserve_price ?? 0) > 0) issues.push(makeIssue("note", `Year ${yearLabel}`, `Auction reserve price is set at ${Number(year.auction_reserve_price).toFixed(2)}.`));
-    if ((year?.minimum_bid_coverage ?? 0) > 0) issues.push(makeIssue("note", `Year ${yearLabel}`, `Minimum bid coverage is set at ${(Number(year.minimum_bid_coverage) * 100).toFixed(0)}% of auction volume.`));
+    if (reserved > 0) issues.push(makeIssue("note", `Year ${yearLabel}`, `Reserved allowances remove ${reserved.toFixed(2)} allowances from current-year circulation.`, yearTarget));
+    if (cancelled > 0) issues.push(makeIssue("note", `Year ${yearLabel}`, `Cancelled allowances permanently retire ${cancelled.toFixed(2)} allowances from the cap.`, yearTarget));
+    if ((year?.auction_reserve_price ?? 0) > 0) issues.push(makeIssue("note", `Year ${yearLabel}`, `Auction reserve price is set at ${Number(year.auction_reserve_price).toFixed(2)}.`, yearTarget));
+    if ((year?.minimum_bid_coverage ?? 0) > 0) issues.push(makeIssue("note", `Year ${yearLabel}`, `Minimum bid coverage is set at ${(Number(year.minimum_bid_coverage) * 100).toFixed(0)}% of auction volume.`, yearTarget));
+    if (expectationRule === "manual") issues.push(makeIssue("note", `Year ${yearLabel}`, `Manual expected future price is set at ${Number(year.manual_expected_price ?? 0).toFixed(2)}.`, yearTarget));
+    if (expectationRule === "perfect_foresight") issues.push(makeIssue("note", `Year ${yearLabel}`, "Perfect foresight expectations are active for this year.", yearTarget));
     const names = new Set();
     participants.forEach((participant) => {
       if (names.has(participant.name)) {
-        issues.push(makeIssue("error", `Year ${yearLabel}`, `Duplicate participant name '${participant.name}'.`));
+        issues.push(makeIssue("error", `Year ${yearLabel}`, `Duplicate participant name '${participant.name}'.`, {
+          section: "build",
+          step: "participants",
+          year: yearLabel,
+          participantName: participant?.name || null,
+        }));
       }
       names.add(participant.name);
-      issues.push(...validateParticipant(participant, `Year ${yearLabel}`));
+      issues.push(...validateParticipant(participant, `Year ${yearLabel}`, yearLabel));
     });
   });
-  if (!issues.length) issues.push(makeIssue("note", "Scenario", "No validation issues detected for the active scenario."));
+  if (!issues.length) issues.push(makeIssue("note", "Scenario", "No validation issues detected for the active scenario.", { section: "validation" }));
   return issues;
 }
 
@@ -283,7 +340,7 @@ function KPI({ label, value, sub, tone }) {
   );
 }
 
-function ValidationPanel({ issues, title = "Validation" }) {
+function ValidationPanel({ issues, title = "Validation", onNavigateIssue = null }) {
   const counts = {
     error: issues.filter((issue) => issue.level === "error").length,
     warning: issues.filter((issue) => issue.level === "warning").length,
@@ -305,13 +362,20 @@ function ValidationPanel({ issues, title = "Validation" }) {
       </div>
       <div className="validation-list">
         {issues.map((issue, index) => (
-          <div key={`${issue.scope}-${issue.message}-${index}`} className={`validation-item ${issue.level}`}>
+          <button
+            key={`${issue.scope}-${issue.message}-${index}`}
+            className={`validation-item ${issue.level} ${issue.target ? "clickable" : ""}`}
+            onClick={() => issue.target && onNavigateIssue?.(issue)}
+            disabled={!issue.target}
+            type="button"
+          >
             <div className="validation-item-head">
               <span className={`validation-dot ${issue.level}`}></span>
               <strong>{issue.scope}</strong>
+              {issue.target ? <span className="validation-jump">Open</span> : null}
             </div>
             <div className="validation-message">{issue.message}</div>
-          </div>
+          </button>
         ))}
       </div>
     </section>
@@ -419,6 +483,7 @@ function Header({
   const sections = [
     { id: "build", label: "Build" },
     { id: "model", label: "Model" },
+    { id: "validation", label: "Validation" },
     { id: "analysis", label: "Analysis" },
     { id: "scenario", label: "Scenario" },
   ];
@@ -515,49 +580,173 @@ function ScenarioHero({ scenario, activeYear, onYearChange, results, primaryMetr
   );
 }
 
-function YearSeriesModal({ title, field, years, onClose, onSave }) {
+function SeriesTrajectoryEditor({ years, draft, setDraft, meta }) {
+  const svgRef = useR(null);
+  const [dragYear, setDragYear] = useS(null);
+  const W = 820;
+  const H = 280;
+  const PAD = { t: 24, r: 24, b: 46, l: 64 };
+  const innerW = W - PAD.l - PAD.r;
+  const innerH = H - PAD.t - PAD.b;
+  const orderedYears = useM(() => (years || []).map((year) => String(year.year)), [years]);
+  const values = orderedYears.map((year) => Number(draft[year] ?? 0));
+  const minValue = meta.min ?? Math.min(0, ...values);
+  const rawMax = Math.max(...values, minValue + 1);
+  const maxValue = Math.max(
+    meta.max ?? 0,
+    minValue + (meta.max != null ? 0 : rawMax * (rawMax <= 1 ? 1.1 : 1.15))
+  );
+  const domainMax = maxValue <= minValue ? minValue + 1 : maxValue;
+  const xAt = (index) => PAD.l + (orderedYears.length <= 1 ? innerW / 2 : (index / (orderedYears.length - 1)) * innerW);
+  const yAt = (value) => {
+    const ratio = (Number(value ?? 0) - minValue) / (domainMax - minValue);
+    return PAD.t + innerH - Math.max(0, Math.min(1, ratio)) * innerH;
+  };
+  const updateFromPointer = (event) => {
+    if (!dragYear || !svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const y = event.clientY - rect.top;
+    const ratio = 1 - (y - PAD.t) / innerH;
+    const unclamped = minValue + Math.max(0, Math.min(1, ratio)) * (domainMax - minValue);
+    const next = meta.step && meta.step < 1
+      ? Math.round(unclamped / meta.step) * meta.step
+      : Math.round(unclamped / (meta.step || 1)) * (meta.step || 1);
+    const clamped = Math.max(meta.min ?? -Infinity, Math.min(meta.max ?? Infinity, Number(next.toFixed(4))));
+    setDraft((current) => ({ ...current, [dragYear]: clamped }));
+  };
+  useE(() => {
+    if (!dragYear) return undefined;
+    const handleMove = (event) => updateFromPointer(event);
+    const handleUp = () => setDragYear(null);
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, [dragYear, minValue, domainMax, meta.step, meta.min, meta.max]);
+  const tickValues = Array.from({ length: 5 }, (_, index) => minValue + ((domainMax - minValue) * index) / 4);
+  const path = orderedYears
+    .map((year, index) => `${index === 0 ? "M" : "L"}${xAt(index)},${yAt(draft[year])}`)
+    .join(" ");
+
+  return (
+    <div className="series-chart-panel">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        className="series-chart"
+        onMouseMove={updateFromPointer}
+      >
+        {tickValues.map((tick, index) => (
+          <g key={`tick-${index}`}>
+            <line x1={PAD.l} x2={W - PAD.r} y1={yAt(tick)} y2={yAt(tick)} className="gridline" />
+            <text x={PAD.l - 10} y={yAt(tick)} className="axis-label" textAnchor="end" dy="0.32em">
+              {meta.format(tick)}
+            </text>
+          </g>
+        ))}
+        {orderedYears.map((year, index) => (
+          <g key={year}>
+            <line x1={xAt(index)} x2={xAt(index)} y1={PAD.t} y2={H - PAD.b} className="gridline subtle" />
+            <text x={xAt(index)} y={H - PAD.b + 18} className="axis-label" textAnchor="middle">
+              {year}
+            </text>
+          </g>
+        ))}
+        <line x1={PAD.l} x2={W - PAD.r} y1={H - PAD.b} y2={H - PAD.b} className="axis" />
+        <line x1={PAD.l} x2={PAD.l} y1={PAD.t} y2={H - PAD.b} className="axis" />
+        <path d={path} className="series-line" />
+        {orderedYears.map((year, index) => (
+          <g key={`point-${year}`}>
+            <circle
+              cx={xAt(index)}
+              cy={yAt(draft[year])}
+              r="6"
+              className={"series-point " + (dragYear === year ? "dragging" : "")}
+              onMouseDown={() => setDragYear(year)}
+            />
+            <text x={xAt(index)} y={yAt(draft[year]) - 12} className="point-label" textAnchor="middle">
+              {meta.format(draft[year])}
+            </text>
+          </g>
+        ))}
+      </svg>
+      <div className="series-chart-help">
+        <span>Drag a point to edit the value for that year.</span>
+        <span>The table view remains available for precise entry.</span>
+      </div>
+    </div>
+  );
+}
+
+function YearSeriesModal({ title, field, years, onClose, onSave, values, description, step, min, max }) {
+  const meta = {
+    ...getSeriesFieldMeta(field),
+    ...(step != null ? { step } : {}),
+    ...(min != null ? { min } : {}),
+    ...(max != null ? { max } : {}),
+  };
+  const [viewMode, setViewMode] = useS("chart");
   const [draft, setDraft] = useS(() =>
-    Object.fromEntries((years || []).map((year) => [String(year.year), year[field] ?? 0]))
+    Object.fromEntries((years || []).map((year) => [String(year.year), values?.[String(year.year)] ?? year[field] ?? 0]))
   );
   useE(() => {
-    setDraft(Object.fromEntries((years || []).map((year) => [String(year.year), year[field] ?? 0])));
-  }, [field, years]);
+    setDraft(Object.fromEntries((years || []).map((year) => [String(year.year), values?.[String(year.year)] ?? year[field] ?? 0])));
+  }, [field, years, values]);
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+      <div className="modal-card modal-card-wide" onClick={(event) => event.stopPropagation()}>
         <div className="panel-head">
           <div>
             <div className="eyebrow">Year series editor</div>
             <h2>{title}</h2>
-            <p className="muted">Set the value for each year in the selected scenario, then save the full series.</p>
+            <p className="muted">{description || "Edit this value across the full scenario period using either a chart or a table."}</p>
           </div>
           <button className="ghost-btn" onClick={onClose}>Close</button>
         </div>
-        <div className="pathway-table-wrap">
-          <table className="pathway-table">
-            <thead>
-              <tr><th>Year</th><th>Value</th></tr>
-            </thead>
-            <tbody>
-              {(years || []).map((year) => (
-                <tr key={year.year}>
-                  <td>{year.year}</td>
-                  <td>
-                    <input
-                      className="text"
-                      type="number"
-                      value={draft[String(year.year)]}
-                      onChange={(event) => setDraft((current) => ({
-                        ...current,
-                        [String(year.year)]: Number(event.target.value),
-                      }))}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="series-editor-head">
+          <div className="seg">
+            <button className={viewMode === "chart" ? "on" : ""} onClick={() => setViewMode("chart")}>Chart</button>
+            <button className={viewMode === "table" ? "on" : ""} onClick={() => setViewMode("table")}>Table</button>
+          </div>
+          <div className="series-editor-meta">
+            <span>Field: {meta.label}</span>
+            <span>Step: {meta.step}</span>
+          </div>
         </div>
+        {viewMode === "chart" ? (
+          <SeriesTrajectoryEditor years={years} draft={draft} setDraft={setDraft} meta={meta} />
+        ) : (
+          <div className="pathway-table-wrap">
+            <table className="pathway-table">
+              <thead>
+                <tr><th>Year</th><th>Value</th></tr>
+              </thead>
+              <tbody>
+                {(years || []).map((year) => (
+                  <tr key={year.year}>
+                    <td>{year.year}</td>
+                    <td>
+                      <input
+                        className="text"
+                        type="number"
+                        step={meta.step}
+                        min={meta.min}
+                        max={meta.max}
+                        value={draft[String(year.year)]}
+                        onChange={(event) => setDraft((current) => ({
+                          ...current,
+                          [String(year.year)]: Number(event.target.value),
+                        }))}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <div className="hero-actions">
           <button className="ghost-btn" onClick={onClose}>Cancel</button>
           <button className="ghost-btn on" onClick={() => { onSave(field, draft); onClose(); }}>Save series</button>
@@ -633,7 +822,7 @@ function slugify(value) {
   return String(value).toLowerCase().replaceAll(" ", "_");
 }
 
-Object.assign(window, {
+export {
   makeBlankParticipant,
   makeBlankYear,
   makeBlankScenario,
@@ -657,4 +846,5 @@ Object.assign(window, {
   MiniMarket,
   Tweaks,
   slugify,
-});
+  getSeriesFieldMeta,
+  };

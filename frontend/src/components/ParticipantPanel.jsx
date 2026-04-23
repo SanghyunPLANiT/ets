@@ -1,6 +1,7 @@
 // Participant drilldown — a table + a horizontal diverging bar showing who buys vs who sells.
+import { fmt } from "./MarketChart.jsx";
 
-function ParticipantPanel({ year, result, onEdit, onSelectParticipant, selectedIdx, sectorColors }) {
+export function ParticipantPanel({ year, result, onEdit, onSelectParticipant, selectedIdx, sectorColors }) {
   const rows = result.perParticipant;
   const maxAbs = Math.max(1, ...rows.map(r => Math.abs(r.net_trade)));
 
@@ -61,5 +62,3 @@ function ParticipantPanel({ year, result, onEdit, onSelectParticipant, selectedI
     </div>
   );
 }
-
-window.ParticipantPanel = ParticipantPanel;

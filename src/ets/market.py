@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Dict
 
 import numpy as np
@@ -8,7 +7,6 @@ import pandas as pd
 from scipy.optimize import root_scalar
 
 from .participant import MarketParticipant
-from .plotting import plot_market_balance
 
 
 class CarbonMarket:
@@ -29,6 +27,8 @@ class CarbonMarket:
         banking_allowed: bool = False,
         borrowing_allowed: bool = False,
         borrowing_limit: float = 0.0,
+        expectation_rule: str = "next_year_baseline",
+        manual_expected_price: float = 0.0,
     ) -> None:
         if not participants:
             raise ValueError("CarbonMarket requires at least one participant.")
@@ -50,6 +50,8 @@ class CarbonMarket:
         self.banking_allowed = banking_allowed
         self.borrowing_allowed = borrowing_allowed
         self.borrowing_limit = float(borrowing_limit)
+        self.expectation_rule = str(expectation_rule)
+        self.manual_expected_price = float(manual_expected_price)
 
         free_allocations = sum(participant.free_allocation for participant in participants)
         allowance_supply = (
@@ -248,19 +250,6 @@ class CarbonMarket:
             borrowing_limit=self.borrowing_limit,
         )
 
-    def market_clearing_condition(
-        self,
-        carbon_price: float,
-        bank_balances: dict[str, float] | None = None,
-        expected_future_price: float = 0.0,
-    ) -> float:
-        total_net_demand = self.total_net_demand(
-            carbon_price,
-            bank_balances=bank_balances,
-            expected_future_price=expected_future_price,
-        )
-        return total_net_demand - self.auction_offered
-
     def find_equilibrium_price(
         self,
         lower_bound: float = 0.0,
@@ -332,12 +321,14 @@ class CarbonMarket:
         bank_balances: dict[str, float] | None = None,
         expected_future_price: float = 0.0,
         auction_outcome: dict[str, float] | None = None,
+        participant_df: pd.DataFrame | None = None,
     ) -> Dict[str, float | str]:
-        participant_df = self.participant_results(
-            equilibrium_price,
-            bank_balances=bank_balances,
-            expected_future_price=expected_future_price,
-        )
+        if participant_df is None:
+            participant_df = self.participant_results(
+                equilibrium_price,
+                bank_balances=bank_balances,
+                expected_future_price=expected_future_price,
+            )
         if auction_outcome is None:
             auction_outcome = {
                 "auction_offered": self.auction_offered,
@@ -373,6 +364,8 @@ class CarbonMarket:
             "Total Borrowed Allowances": float(
                 participant_df["Borrowed Allowances"].sum()
             ),
+            "Expectation Rule": self.expectation_rule,
+            "Manual Expected Price": self.manual_expected_price,
             "Total Compliance Cost": float(
                 participant_df["Total Compliance Cost"].sum()
             ),
@@ -387,27 +380,3 @@ class CarbonMarket:
                 row["Net Allowances Traded"]
             )
         return summary
-
-    def plot_market_balance(
-        self,
-        equilibrium_price: float,
-        output_dir: Path,
-        price_points: int = 250,
-        bank_balances: dict[str, float] | None = None,
-        expected_future_price: float = 0.0,
-        auction_supply: float | None = None,
-    ) -> Path:
-        return plot_market_balance(
-            scenario_name=self.scenario_name,
-            participants=self.participants,
-            auction_supply=self.auction_offered if auction_supply is None else auction_supply,
-            equilibrium_price=equilibrium_price,
-            output_dir=output_dir,
-            year=self.year,
-            price_points=price_points,
-            bank_balances=bank_balances,
-            expected_future_price=expected_future_price,
-            banking_allowed=self.banking_allowed,
-            borrowing_allowed=self.borrowing_allowed,
-            borrowing_limit=self.borrowing_limit,
-        )

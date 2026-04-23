@@ -1,18 +1,40 @@
+import { useState } from "react";
+import { fmt, SECTOR_COLORS, MarketChart } from "./MarketChart.jsx";
+import { TrajectoryChart } from "./TrajectoryChart.jsx";
+import { ParticipantPanel } from "./ParticipantPanel.jsx";
+import { ParticipantMacChart } from "./ParticipantMacChart.jsx";
+import { AnnualMarketChart } from "./AnnualMarketChart.jsx";
+import { MarketYearGallery } from "./MarketYearGallery.jsx";
+import { Editor } from "./Editor.jsx";
+import {
+  KPI,
+  ValidationPanel,
+  AuctionDiagnosticsPanel,
+  AuctionPathwayPanel,
+  ScenarioHero,
+  YearSeriesModal,
+  MiniMarket,
+  buildTechnologyPathway,
+  describeUnsoldTreatment,
+  getSeriesFieldMeta,
+} from "./AppShared.jsx";
+
 function BuildView({
   scenario, yearObj, activeYear, onYearChange, addYear, removeYear,
-  onRunBase, onRunEdited, hasEditedChanges, onSave, onUpdateYearSeries, validationIssues,
+  onRunBase, onRunEdited, hasEditedChanges, onSave, onUpdateYearSeries, navigationTarget,
 }) {
-  const [seriesField, setSeriesField] = React.useState(null);
+  const [seriesField, setSeriesField] = useState(null);
   const seriesFields = [
-    { key: "total_cap", label: "Total cap" },
-    { key: "auction_offered", label: "Auction offered" },
-    { key: "reserved_allowances", label: "Reserved allowances" },
-    { key: "cancelled_allowances", label: "Cancelled allowances" },
-    { key: "auction_reserve_price", label: "Auction reserve price" },
-    { key: "minimum_bid_coverage", label: "Minimum bid coverage" },
-    { key: "price_lower_bound", label: "Price floor" },
-    { key: "price_upper_bound", label: "Price ceiling" },
-    { key: "borrowing_limit", label: "Borrowing limit" },
+    "total_cap",
+    "auction_offered",
+    "reserved_allowances",
+    "cancelled_allowances",
+    "auction_reserve_price",
+    "minimum_bid_coverage",
+    "price_lower_bound",
+    "price_upper_bound",
+    "borrowing_limit",
+    "manual_expected_price",
   ];
   return (
     <div className="wb">
@@ -46,16 +68,18 @@ function BuildView({
           </div>
         </div>
         <div className="review-grid">
-          {seriesFields.map((field) => (
-            <button key={field.key} className="review-item review-button" onClick={() => setSeriesField(field.key)}>
-              <span className="review-label">{field.label}</span>
-              <strong>{fmt.num(yearObj[field.key] || 0, 0)}</strong>
-              <span className="muted">{scenario.years.map((year) => `${year.year}: ${fmt.num(year[field.key] || 0, 0)}`).join(" · ")}</span>
-            </button>
-          ))}
+          {seriesFields.map((field) => {
+            const meta = getSeriesFieldMeta(field);
+            return (
+            <button key={field} className="review-item review-button" onClick={() => setSeriesField(field)}>
+              <span className="review-label">{meta.label}</span>
+              <strong>{meta.format(yearObj[field] || 0)}</strong>
+              <span className="muted">{scenario.years.map((year) => `${year.year}: ${meta.format(year[field] || 0)}`).join(" · ")}</span>
+              </button>
+            );
+          })}
         </div>
       </section>
-      <ValidationPanel issues={validationIssues} title="Build validation" />
       <section className="panel">
         <div className="panel-head">
           <div>
@@ -64,15 +88,24 @@ function BuildView({
             <p className="muted">Build from scratch, use templates, and edit year, participant, MAC, and technology assumptions.</p>
           </div>
         </div>
-        <Editor scenario={scenario} year={yearObj} onSave={onSave} onAddYear={addYear} onRemoveYear={removeYear} onSelectYear={onYearChange} />
+        <Editor
+          scenario={scenario}
+          year={yearObj}
+          onSave={onSave}
+          onAddYear={addYear}
+          onRemoveYear={removeYear}
+          onSelectYear={onYearChange}
+          navigationTarget={navigationTarget}
+        />
       </section>
       {seriesField && (
         <YearSeriesModal
-          title={seriesFields.find((field) => field.key === seriesField)?.label || seriesField}
+          title={getSeriesFieldMeta(seriesField).label}
           field={seriesField}
           years={scenario.years}
           onClose={() => setSeriesField(null)}
           onSave={onUpdateYearSeries}
+          description="Edit this market-rule trajectory across all years using a draggable chart or the numeric table."
         />
       )}
     </div>
@@ -80,7 +113,7 @@ function BuildView({
 }
 
 function ModelView({
-  scenario, yearObj, activeYear, onYearChange, selPart, setSelPart, onRunBase, onRunEdited, hasEditedChanges, validationIssues,
+  scenario, yearObj, activeYear, onYearChange, selPart, setSelPart, onRunBase, onRunEdited, hasEditedChanges,
 }) {
   const selectedIndex = selPart == null ? 0 : selPart;
   const selectedParticipant = yearObj.participants?.[selectedIndex] || null;
@@ -120,7 +153,6 @@ function ModelView({
         )}
       />
       <section className="wb-grid">
-        <ValidationPanel issues={validationIssues} title="Model validation" />
         <div className="panel">
           <div className="panel-head">
             <div><div className="eyebrow">Market</div><h2>Year {yearObj.year} market definition</h2></div>
@@ -138,6 +170,8 @@ function ModelView({
             <div className="review-item"><span className="review-label">Price bounds</span><strong>{fmt.num(yearObj.price_lower_bound || 0, 0)} to {fmt.num(yearObj.price_upper_bound || 0, 0)}</strong></div>
             <div className="review-item"><span className="review-label">Banking</span><strong>{yearObj.banking_allowed ? "enabled" : "disabled"}</strong></div>
             <div className="review-item"><span className="review-label">Borrowing</span><strong>{yearObj.borrowing_allowed ? `enabled (${fmt.num(yearObj.borrowing_limit || 0, 0)})` : "disabled"}</strong></div>
+            <div className="review-item"><span className="review-label">Expectation rule</span><strong>{yearObj.expectation_rule || "next_year_baseline"}</strong></div>
+            <div className="review-item"><span className="review-label">Manual expected price</span><strong>{fmt.price(yearObj.manual_expected_price || 0)}</strong></div>
           </div>
         </div>
         <div className="panel">
@@ -173,6 +207,8 @@ function ModelView({
             <div className="review-item"><span className="review-label">Cancelled allowances</span><strong>{fmt.num(yearObj.cancelled_allowances || 0, 0)}</strong></div>
             <div className="review-item review-item-wide"><span className="review-label">Unsold treatment</span><strong>{describeUnsoldTreatment(yearObj.unsold_treatment || "reserve")}</strong></div>
             <div className="review-item review-item-wide"><span className="review-label">Mechanism</span><strong>Offered auction volume only becomes market supply if it clears the reserve-price and bid-coverage rules for the year.</strong></div>
+            <div className="review-item"><span className="review-label">Expectation rule</span><strong>{yearObj.expectation_rule || "next_year_baseline"}</strong></div>
+            <div className="review-item"><span className="review-label">Manual expected price</span><strong>{fmt.price(yearObj.manual_expected_price || 0)}</strong></div>
           </div>
         </div>
         <AuctionPathwayPanel scenario={scenario} results={{}} />
@@ -212,6 +248,44 @@ function ModelView({
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function ValidationView({ scenario, activeYear, onYearChange, validationIssues, onNavigateIssue }) {
+  const issueCounts = validationIssues.reduce(
+    (acc, issue) => {
+      acc[issue.level] = (acc[issue.level] || 0) + 1;
+      return acc;
+    },
+    { error: 0, warning: 0, note: 0 }
+  );
+  return (
+    <div className="wb">
+      <ScenarioHero
+        scenario={scenario}
+        activeYear={activeYear}
+        onYearChange={onYearChange}
+        results={{}}
+        primaryMetric={(
+          <div className="panel hero-panel">
+            <div className="panel-head">
+              <div>
+                <div className="eyebrow">Validation</div>
+                <h2>Review scenario checks</h2>
+                <p className="muted">Use this section to inspect structural issues before running or interpreting the model.</p>
+              </div>
+            </div>
+            <div className="review-grid">
+              <div className="review-item"><span className="review-label">Errors</span><strong>{issueCounts.error || 0}</strong></div>
+              <div className="review-item"><span className="review-label">Warnings</span><strong>{issueCounts.warning || 0}</strong></div>
+              <div className="review-item"><span className="review-label">Notes</span><strong>{issueCounts.note || 0}</strong></div>
+              <div className="review-item"><span className="review-label">Scenario years</span><strong>{(scenario?.years || []).length}</strong></div>
+            </div>
+          </div>
+        )}
+      />
+      <ValidationPanel issues={validationIssues} title="Scenario validation" onNavigateIssue={onNavigateIssue} />
     </div>
   );
 }
@@ -279,6 +353,7 @@ function AnalysisView({
             <li>Unsold treatment: {describeUnsoldTreatment(yearObj.unsold_treatment || "reserve")}.</li>
             <li>Reserved allowances: {fmt.num(yearObj.reserved_allowances || 0, 0)} are held out of circulation before market clearing.</li>
             <li>Cancelled allowances: {fmt.num(yearObj.cancelled_allowances || 0, 0)} are permanently removed from the annual cap.</li>
+            <li>Expectation rule: {result.expectationRule === "manual" ? `manual future price of ${fmt.price(result.manualExpectedPrice)}.` : `${result.expectationRule || "next_year_baseline"} with expected future price ${fmt.price(result.expectedFuturePrice)}.`}</li>
           </ul>
         </div>
       </section>
@@ -407,4 +482,4 @@ function Compare({ scenarios, results, activeYear, onYear }) {
   );
 }
 
-Object.assign(window, { BuildView, ModelView, AnalysisView, Compare });
+export { BuildView, ModelView, ValidationView, AnalysisView, Compare };

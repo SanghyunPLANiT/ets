@@ -32,7 +32,6 @@ Core backend:
 - [src/ets/scenarios.py](/Users/sanghyun/github/particalequlibrium/src/ets/scenarios.py)
 - [src/ets/simulation.py](/Users/sanghyun/github/particalequlibrium/src/ets/simulation.py)
 - [src/ets/costs.py](/Users/sanghyun/github/particalequlibrium/src/ets/costs.py)
-- [src/ets/plotting.py](/Users/sanghyun/github/particalequlibrium/src/ets/plotting.py)
 
 Web UI:
 
@@ -53,9 +52,9 @@ Examples:
 - [examples/climate_solutions_technology_switching.json](/Users/sanghyun/github/particalequlibrium/examples/climate_solutions_technology_switching.json)
 - [examples/climate_solutions_banking_borrowing.json](/Users/sanghyun/github/particalequlibrium/examples/climate_solutions_banking_borrowing.json)
 
-Outputs:
+Built frontend bundle:
 
-- [outputs](/Users/sanghyun/github/particalequlibrium/outputs)
+- [frontend/dist](/Users/sanghyun/github/particalequlibrium/frontend/dist)
 
 ## 3. How To Run It
 
@@ -254,7 +253,7 @@ After running:
 - technology pathway across years
 - participant-level outcomes
 - annual equilibrium charts
-- market-clearing plots
+- interactive market-clearing charts
 
 ## 5. Core Model Concepts
 

@@ -2,7 +2,7 @@
   "version": 2,
   "functions": {
     "app.py": {
-      "includeFiles": "{frontend/public/**,frontend/src/**,examples/**,src/ets/**}"
+      "includeFiles": "{frontend/dist/**,examples/**,src/ets/**}"
     }
   },
   "builds": [

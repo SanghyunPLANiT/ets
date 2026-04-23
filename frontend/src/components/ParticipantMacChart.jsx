@@ -1,3 +1,5 @@
+import { fmt } from "./MarketChart.jsx";
+
 function buildMacSeries(participant) {
   if (!participant) return { type: "none", points: [], maxAbatement: 0, maxCost: 0 };
 
@@ -47,7 +49,7 @@ function buildMacSeries(participant) {
   };
 }
 
-function ParticipantMacChart({ participant, outcome, carbonPrice }) {
+export function ParticipantMacChart({ participant, outcome, carbonPrice }) {
   if (!participant || !outcome) {
     return (
       <div className="mac-empty">
@@ -131,5 +133,3 @@ function ParticipantMacChart({ participant, outcome, carbonPrice }) {
     </div>
   );
 }
-
-window.ParticipantMacChart = ParticipantMacChart;

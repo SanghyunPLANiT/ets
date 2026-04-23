@@ -1,6 +1,5 @@
-const { useState: useS, useEffect: useE, useRef: useR } = React;
-
-const {
+import { useState as useS, useEffect as useE, useRef as useR } from "react";
+import {
   makeBlankParticipant,
   makeBlankYear,
   makeBlankScenario,
@@ -8,14 +7,11 @@ const {
   configsEqual,
   validateScenario,
   Header,
-  BuildView,
-  ModelView,
-  AnalysisView,
-  Compare,
   Tweaks,
-} = window;
+} from "./components/AppShared.jsx";
+import { BuildView, ModelView, ValidationView, AnalysisView, Compare } from "./components/AppViews.jsx";
 
-function App() {
+export default function App() {
   const [templates, setTemplates] = useS([]);
   const [config, setConfig] = useS({ scenarios: [] });
   const [results, setResults] = useS({});
@@ -26,6 +22,7 @@ function App() {
   const [stacked, setStacked] = useS(true);
   const [activeSection, setActiveSection] = useS("build");
   const [selPart, setSelPart] = useS(null);
+  const [validationTarget, setValidationTarget] = useS(null);
   const [status, setStatus] = useS("Loading templates…");
   const [tweaksOpen, setTweaksOpen] = useS(false);
   const [tweakState, setTweakState] = useS({
@@ -310,7 +307,30 @@ function App() {
     setActiveScenarioId(nextConfig.scenarios?.[0]?.id || null);
     setActiveYear(nextConfig.scenarios?.[0]?.years?.[0]?.year || null);
     setSelPart(null);
+    setValidationTarget(null);
     setStatus(`Loaded template: ${template.name}. Click Run scenario to solve the market.`);
+  };
+
+  const navigateValidationIssue = (issue) => {
+    const target = issue?.target;
+    if (!target) return;
+    if (target.year) {
+      setActiveYear(String(target.year));
+    }
+    if (target.participantName) {
+      const targetYear = activeScenario?.years?.find((item) => String(item.year) === String(target.year || activeYear)) || yearObj;
+      const participantIndex = (targetYear?.participants || []).findIndex((item) => item.name === target.participantName);
+      setSelPart(participantIndex >= 0 ? participantIndex : null);
+    } else {
+      setSelPart(null);
+    }
+    if (target.section && target.section !== "validation") {
+      setValidationTarget({ ...target, token: Date.now() });
+      setActiveSection(target.section);
+      setStatus(`Opened ${issue.scope} in ${target.section}.`);
+      return;
+    }
+    setStatus(`Focused ${issue.scope}.`);
   };
 
   if (!activeScenario || !yearObj || !displayResult) {
@@ -345,10 +365,10 @@ function App() {
           removeYear={removeYear}
           onSave={saveScenarioYear}
           onUpdateYearSeries={updateYearSeriesValue}
-          validationIssues={validationIssues}
           onRunBase={runBaseScenario}
           onRunEdited={() => runSimulation()}
           hasEditedChanges={hasEditedChanges}
+          navigationTarget={validationTarget}
         />
       )}
 
@@ -363,7 +383,16 @@ function App() {
           onRunBase={runBaseScenario}
           onRunEdited={() => runSimulation()}
           hasEditedChanges={hasEditedChanges}
+        />
+      )}
+
+      {activeSection === "validation" && (
+        <ValidationView
+          scenario={activeScenario}
+          activeYear={activeYear}
+          onYearChange={(year) => { setActiveYear(year); setSelPart(null); }}
           validationIssues={validationIssues}
+          onNavigateIssue={navigateValidationIssue}
         />
       )}
 
@@ -393,6 +422,3 @@ function App() {
     </div>
   );
 }
-
-window.App = App;
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);

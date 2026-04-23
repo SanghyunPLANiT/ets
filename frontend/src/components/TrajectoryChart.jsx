@@ -1,13 +1,14 @@
 // Annual trajectory — equilibrium price across years, with abatement + revenue as secondary layers.
-const { useMemo: useMemo2 } = React;
+import { useMemo } from "react";
+import { fmt } from "./MarketChart.jsx";
 
-function TrajectoryChart({ scenarios, results, highlightScenario, onHoverYear }) {
+export function TrajectoryChart({ scenarios, results, highlightScenario, onHoverYear }) {
   const W = 680, H = 340;
   const PAD = { t: 28, r: 130, b: 40, l: 52 };
   const iw = W - PAD.l - PAD.r, ih = H - PAD.t - PAD.b;
 
   // Collect all years across scenarios.
-  const allYears = useMemo2(() => {
+  const allYears = useMemo(() => {
     const set = new Set();
     scenarios.forEach(s => s.years.forEach(y => set.add(String(y.year))));
     return [...set].sort();
@@ -20,7 +21,7 @@ function TrajectoryChart({ scenarios, results, highlightScenario, onHoverYear })
     return PAD.l + (i / n) * iw;
   };
 
-  const maxPrice = useMemo2(() => {
+  const maxPrice = useMemo(() => {
     let m = 50;
     for (const s of scenarios) {
       for (const y of s.years) {
@@ -88,4 +89,3 @@ function TrajectoryChart({ scenarios, results, highlightScenario, onHoverYear })
     </div>
   );
 }
-window.TrajectoryChart = TrajectoryChart;

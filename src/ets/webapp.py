@@ -11,17 +11,18 @@ from urllib.parse import urlparse
 
 import pandas as pd
 
-from .config import EXAMPLES_DIR, FRONTEND_PUBLIC_DIR, FRONTEND_SRC_DIR, OUTPUT_DIR
+from .config import EXAMPLES_DIR, FRONTEND_DIST_DIR
 from .scenarios import blank_config, build_markets_from_config, load_config
-from .simulation import run_simulation
+from .simulation import run_simulation, solve_scenario_path
 
 ASSET_CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
-    ".jsx": "text/babel; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".json": "application/json; charset=utf-8",
     ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".map": "application/json; charset=utf-8",
 }
 
 
@@ -65,7 +66,7 @@ def _decorate_frontend_config(config: dict, template_id: str) -> dict:
 def _build_dashboard_payload(config: dict) -> dict:
     frontend_config = _decorate_frontend_config(config, template_id="run")
     markets = build_markets_from_config(frontend_config)
-    summary_df, participant_df = run_simulation(markets, output_dir=OUTPUT_DIR, write_outputs=False)
+    summary_df, participant_df = run_simulation(markets)
 
     by_scenario: dict[str, dict[str, dict]] = {}
     scenario_market_map: dict[str, list] = {}
@@ -80,30 +81,13 @@ def _build_dashboard_payload(config: dict) -> dict:
                 str(item.year),
             ),
         )
-        baseline_prices = {
-            str(market.year): market.find_equilibrium_price()
-            for market in ordered_markets
-        }
-        bank_balances = {participant.name: 0.0 for participant in ordered_markets[0].participants}
-        carry_forward_allowances = 0.0
-
-        for index, market in enumerate(ordered_markets):
-            next_market = ordered_markets[index + 1] if index + 1 < len(ordered_markets) else None
-            expected_future_price = 0.0
-            if next_market is not None:
-                expected_future_price = baseline_prices.get(str(next_market.year), 0.0)
-
-            equilibrium = market.solve_equilibrium(
-                bank_balances=bank_balances,
-                expected_future_price=expected_future_price,
-                carry_forward_in=carry_forward_allowances,
-            )
+        for item in solve_scenario_path(ordered_markets):
+            market = item["market"]
+            expected_future_price = item["expected_future_price"]
+            starting_bank_balances = item["starting_bank_balances"]
+            equilibrium = item["equilibrium"]
             price = float(equilibrium["price"])
-            participant_rows = market.participant_results(
-                price,
-                bank_balances=bank_balances,
-                expected_future_price=expected_future_price,
-            ).to_dict(orient="records")
+            participant_rows = item["participant_df"].to_dict(orient="records")
             demand_curve = []
             lower = market.price_lower_bound if market.price_lower_bound is not None else 0.0
             upper = market.price_upper_bound if market.price_upper_bound is not None else max(
@@ -115,7 +99,7 @@ def _build_dashboard_payload(config: dict) -> dict:
                 per_part = [
                     participant.allowance_demand_or_supply(
                         probe,
-                        starting_bank_balance=float(bank_balances.get(participant.name, 0.0)),
+                        starting_bank_balance=float(starting_bank_balances.get(participant.name, 0.0)),
                         expected_future_price=expected_future_price,
                         banking_allowed=market.banking_allowed,
                         borrowing_allowed=market.borrowing_allowed,
@@ -138,6 +122,9 @@ def _build_dashboard_payload(config: dict) -> dict:
                 "auctionSold": float(equilibrium["auction_sold"]),
                 "unsoldAllowances": float(equilibrium["unsold_allowances"]),
                 "auctionCoverageRatio": float(equilibrium["coverage_ratio"]),
+                "expectationRule": market.expectation_rule,
+                "manualExpectedPrice": market.manual_expected_price,
+                "expectedFuturePrice": expected_future_price,
                 "totalAbate": float(sum(row["Abatement"] for row in participant_rows)),
                 "totalTraded": float(sum(max(0.0, row["Net Allowances Traded"]) for row in participant_rows)),
                 "revenue": float(market.calculate_auction_revenue(price, float(equilibrium["auction_sold"]))),
@@ -177,15 +164,6 @@ def _build_dashboard_payload(config: dict) -> dict:
                 "demandCurve": demand_curve,
             }
             by_scenario.setdefault(market.scenario_name, {})[str(market.year or "Base Year")] = result
-            carry_forward_allowances = (
-                float(equilibrium["unsold_allowances"])
-                if market.unsold_treatment == "carry_forward"
-                else 0.0
-            )
-            bank_balances = {
-                str(row["Participant"]): float(row.get("Ending Bank Balance", 0.0))
-                for row in participant_rows
-            }
 
     summary_records = summary_df.to_dict(orient="records")
     participant_records = participant_df.to_dict(orient="records")
@@ -222,7 +200,7 @@ class ETSRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/":
-            self._serve_public_asset("index.html")
+            self._serve_dist_asset("index.html")
             return
         if parsed.path == "/api/templates":
             self._write_json({"templates": _predefined_templates()})
@@ -230,16 +208,8 @@ class ETSRequestHandler(BaseHTTPRequestHandler):
         if parsed.path.startswith("/api/"):
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
             return
-        if parsed.path.startswith("/outputs/"):
-            self._serve_output_asset(parsed.path.removeprefix("/outputs/"))
-            return
-
-        if parsed.path.startswith("/src/"):
-            self._serve_src_asset(parsed.path.removeprefix("/src/"))
-            return
-
         relative_path = parsed.path.lstrip("/")
-        self._serve_public_asset(relative_path)
+        self._serve_dist_asset(relative_path)
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
@@ -259,34 +229,13 @@ class ETSRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:
         return
 
-    def _serve_public_asset(self, relative_path: str) -> None:
-        safe_path = (FRONTEND_PUBLIC_DIR / relative_path).resolve()
-        if FRONTEND_PUBLIC_DIR.resolve() not in safe_path.parents and safe_path != FRONTEND_PUBLIC_DIR.resolve():
+    def _serve_dist_asset(self, relative_path: str) -> None:
+        safe_path = (FRONTEND_DIST_DIR / relative_path).resolve()
+        if FRONTEND_DIST_DIR.resolve() not in safe_path.parents and safe_path != FRONTEND_DIST_DIR.resolve():
             self.send_error(HTTPStatus.FORBIDDEN, "Forbidden")
             return
         if not safe_path.exists() or not safe_path.is_file():
-            self.send_error(HTTPStatus.NOT_FOUND, "File not found")
-            return
-        self._serve_file(safe_path)
-
-    def _serve_src_asset(self, relative_path: str) -> None:
-        safe_path = (FRONTEND_SRC_DIR / relative_path).resolve()
-        if FRONTEND_SRC_DIR.resolve() not in safe_path.parents and safe_path != FRONTEND_SRC_DIR.resolve():
-            self.send_error(HTTPStatus.FORBIDDEN, "Forbidden")
-            return
-        if not safe_path.exists() or not safe_path.is_file():
-            self.send_error(HTTPStatus.NOT_FOUND, "File not found")
-            return
-        self._serve_file(safe_path)
-
-    def _serve_output_asset(self, relative_path: str) -> None:
-        safe_path = (OUTPUT_DIR / relative_path).resolve()
-        if OUTPUT_DIR.resolve() not in safe_path.parents and safe_path != OUTPUT_DIR.resolve():
-            self.send_error(HTTPStatus.FORBIDDEN, "Forbidden")
-            return
-        if not safe_path.exists() or not safe_path.is_file():
-            self.send_error(HTTPStatus.NOT_FOUND, "File not found")
-            return
+            safe_path = FRONTEND_DIST_DIR / "index.html"
         self._serve_file(safe_path)
 
     def _serve_file(self, path: Path) -> None:
@@ -360,6 +309,9 @@ def build_analysis(summary_df: pd.DataFrame, participant_df: pd.DataFrame) -> li
         )
         analysis.append(
             f"Compliance channels: firms abate {float(row.get('Total Abatement', 0.0)):.2f}, buy {float(row.get('Total Allowance Buys', 0.0)):.2f} allowances, sell {float(row.get('Total Allowance Sells', 0.0)):.2f}, and send {float(row.get('Total Penalty Emissions', 0.0)):.2f} emissions into the penalty channel."
+        )
+        analysis.append(
+            f"Expectation rule: {row.get('Expectation Rule', 'next_year_baseline')} with expected future price {float(scenario_slice['Expected Future Price'].mean()) if 'Expected Future Price' in scenario_slice.columns else 0.0:.2f}."
         )
         if float(row.get("Total Banked Allowances", 0.0)) > 0.0 or float(
             row.get("Total Borrowed Allowances", 0.0)

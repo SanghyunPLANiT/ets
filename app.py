@@ -11,7 +11,7 @@ SRC_DIR = PROJECT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from ets.config import FRONTEND_PUBLIC_DIR, FRONTEND_SRC_DIR, OUTPUT_DIR
+from ets.config import FRONTEND_DIST_DIR
 from ets.webapp import ASSET_CONTENT_TYPES, _build_dashboard_payload, _predefined_templates
 
 
@@ -72,26 +72,14 @@ def app(environ, start_response):
         return _json_response(start_response, {"error": "Method not allowed"}, HTTPStatus.METHOD_NOT_ALLOWED)
 
     if path == "/":
-        return _file_response(start_response, FRONTEND_PUBLIC_DIR / "index.html")
-
-    if path.startswith("/outputs/"):
-        safe = _safe_path(OUTPUT_DIR, path.removeprefix("/outputs/"))
-        if safe is None:
-            return _json_response(start_response, {"error": "Forbidden"}, HTTPStatus.FORBIDDEN)
-        return _file_response(start_response, safe)
+        return _file_response(start_response, FRONTEND_DIST_DIR / "index.html")
 
     if path.startswith("/api/"):
         return _json_response(start_response, {"error": "Not found"}, HTTPStatus.NOT_FOUND)
 
-    if path.startswith("/src/"):
-        safe = _safe_path(FRONTEND_SRC_DIR, path.removeprefix("/src/"))
-        if safe is None:
-            return _json_response(start_response, {"error": "Forbidden"}, HTTPStatus.FORBIDDEN)
-        return _file_response(start_response, safe)
-
-    safe = _safe_path(FRONTEND_PUBLIC_DIR, path.lstrip("/"))
+    safe = _safe_path(FRONTEND_DIST_DIR, path.lstrip("/"))
     if safe is None:
         return _json_response(start_response, {"error": "Forbidden"}, HTTPStatus.FORBIDDEN)
     if safe.exists() and safe.is_file():
         return _file_response(start_response, safe)
-    return _file_response(start_response, FRONTEND_PUBLIC_DIR / "index.html")
+    return _file_response(start_response, FRONTEND_DIST_DIR / "index.html")

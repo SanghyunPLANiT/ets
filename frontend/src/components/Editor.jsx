@@ -1,10 +1,15 @@
-function Editor({
+import React from "react";
+import { fmt } from "./MarketChart.jsx";
+import { YearSeriesModal, getSeriesFieldMeta } from "./AppShared.jsx";
+
+export function Editor({
   scenario,
   year,
   onSave,
   onAddYear,
   onRemoveYear,
   onSelectYear,
+  navigationTarget = null,
 }) {
   const [workingScenario, setWorkingScenario] = React.useState(() => structuredClone(scenario));
   const [workingYear, setWorkingYear] = React.useState(() => structuredClone(year));
@@ -16,6 +21,11 @@ function Editor({
   const [wizardArchetype, setWizardArchetype] = React.useState("auto");
   const [wizardReplacements, setWizardReplacements] = React.useState([]);
   const [wizardMode, setWizardMode] = React.useState("moderate");
+  const [seriesEditor, setSeriesEditor] = React.useState(null);
+  const participant = workingYear.participants?.[selectedParticipantIndex] || null;
+  const technologyOptions = participant?.technology_options || [];
+  const selectedTechnology = technologyOptions[selectedTechnologyIndex] || null;
+  const participantNameLower = participant?.name?.toLowerCase() || "";
 
   React.useEffect(() => {
     setWorkingScenario(structuredClone(scenario));
@@ -65,10 +75,30 @@ function Editor({
     });
   }, [wizardArchetype]);
 
-  const participant = workingYear.participants?.[selectedParticipantIndex] || null;
-  const technologyOptions = participant?.technology_options || [];
-  const selectedTechnology = technologyOptions[selectedTechnologyIndex] || null;
-  const participantNameLower = participant?.name?.toLowerCase() || "";
+  React.useEffect(() => {
+    if (!navigationTarget) return;
+    if (navigationTarget.step) {
+      setActiveStep(navigationTarget.step);
+    }
+    if (navigationTarget.participantName) {
+      const participantIndex = (workingYear.participants || []).findIndex(
+        (item) => item.name === navigationTarget.participantName
+      );
+      if (participantIndex >= 0) {
+        setSelectedParticipantIndex(participantIndex);
+        const technologyName = navigationTarget.technologyName;
+        if (technologyName) {
+          const technologyIndex = (workingYear.participants?.[participantIndex]?.technology_options || []).findIndex(
+            (item) => item.name === technologyName
+          );
+          if (technologyIndex >= 0) {
+            setSelectedTechnologyIndex(technologyIndex);
+          }
+        }
+      }
+    }
+  }, [navigationTarget, workingYear.participants]);
+
   const isDirty =
     JSON.stringify(workingScenario) !== JSON.stringify(scenario)
     || JSON.stringify(workingYear) !== JSON.stringify(year);
@@ -88,6 +118,14 @@ function Editor({
     mac_blocks: "Used only for piecewise abatement. Enter blocks as amount@cost; amount@cost.",
     fixed_cost: "Fixed annual technology cost paid if this technology option is chosen.",
   };
+
+  const scenarioYearsWithDraft = React.useMemo(
+    () =>
+      (workingScenario.years || []).map((item) =>
+        String(item.year) === String(year.year) ? structuredClone(workingYear) : item
+      ),
+    [workingScenario.years, workingYear, year.year]
+  );
 
   const wizardArchetypes = {
     auto: {
@@ -332,6 +370,15 @@ function Editor({
   const updateYear = (patch) => setWorkingYear((current) => ({ ...current, ...patch }));
 
   const updateParticipants = (participants) => setWorkingYear((current) => ({ ...current, participants }));
+
+  const syncScenarioYearDraft = (nextYearDraft) => {
+    setWorkingScenario((current) => ({
+      ...current,
+      years: (current.years || []).map((item) =>
+        String(item.year) === String(year.year) ? structuredClone(nextYearDraft) : item
+      ),
+    }));
+  };
 
   const updateParticipant = (index, patch) => {
     const participants = (workingYear.participants || []).map((item, rowIndex) =>
@@ -681,6 +728,96 @@ function Editor({
     </div>
   );
 
+  const openMarketSeriesEditor = (field) => {
+    setSeriesEditor({
+      type: "market",
+      title: getSeriesFieldMeta(field).label,
+      field,
+      values: Object.fromEntries(
+        scenarioYearsWithDraft.map((item) => [String(item.year), Number(item[field] ?? 0)])
+      ),
+      description: "Edit this market-rule trajectory across all scenario years using a chart or the table.",
+    });
+  };
+
+  const openParticipantSeriesEditor = (field) => {
+    if (!participant) return;
+    setSeriesEditor({
+      type: "participant",
+      title: `${participant.name || "Participant"} · ${getSeriesFieldMeta(field).label}`,
+      field,
+      values: Object.fromEntries(
+        scenarioYearsWithDraft.map((item) => [
+          String(item.year),
+          Number(item.participants?.[selectedParticipantIndex]?.[field] ?? 0),
+        ])
+      ),
+      description: "Edit the selected participant across all years. The same participant index is updated year by year.",
+      participantIndex: selectedParticipantIndex,
+    });
+  };
+
+  const openTechnologySeriesEditor = (field) => {
+    if (!selectedTechnology) return;
+    setSeriesEditor({
+      type: "technology",
+      title: `${selectedTechnology.name || "Technology"} · ${getSeriesFieldMeta(field).label}`,
+      field,
+      values: Object.fromEntries(
+        scenarioYearsWithDraft.map((item) => [
+          String(item.year),
+          Number(item.participants?.[selectedParticipantIndex]?.technology_options?.[selectedTechnologyIndex]?.[field] ?? 0),
+        ])
+      ),
+      description: "Edit this technology option across all years. The selected participant and technology index are updated year by year.",
+      participantIndex: selectedParticipantIndex,
+      technologyIndex: selectedTechnologyIndex,
+    });
+  };
+
+  const applySeriesEdit = (field, valuesByYear) => {
+    setWorkingScenario((current) => {
+      const nextYears = scenarioYearsWithDraft.map((item) => {
+        const yearKey = String(item.year);
+        const nextValue = valuesByYear[yearKey];
+        if (seriesEditor?.type === "market") {
+          return { ...item, [field]: nextValue ?? item[field] };
+        }
+        if (seriesEditor?.type === "participant") {
+          const participants = (item.participants || []).map((entry, index) =>
+            index === seriesEditor.participantIndex ? { ...entry, [field]: nextValue ?? entry[field] } : entry
+          );
+          return { ...item, participants };
+        }
+        if (seriesEditor?.type === "technology") {
+          const participants = (item.participants || []).map((entry, index) => {
+            if (index !== seriesEditor.participantIndex) return entry;
+            const technologyOptions = (entry.technology_options || []).map((option, optionIndex) =>
+              optionIndex === seriesEditor.technologyIndex ? { ...option, [field]: nextValue ?? option[field] } : option
+            );
+            return { ...entry, technology_options: technologyOptions };
+          });
+          return { ...item, participants };
+        }
+        return item;
+      });
+      const currentYearDraft = nextYears.find((item) => String(item.year) === String(workingYear.year)) || workingYear;
+      setWorkingYear(structuredClone(currentYearDraft));
+      return { ...current, years: nextYears };
+    });
+  };
+
+  const fieldWithPathButton = (label, onClick, required = false, optional = false) => (
+    <span className="field-title-row">
+      <span>
+        {label}{" "}
+        {required ? <span className="field-flag required">required</span> : null}
+        {optional ? <span className="field-flag optional">optional</span> : null}
+      </span>
+      <button className="field-path-btn" type="button" onClick={onClick}>Edit path</button>
+    </span>
+  );
+
   return (
     <div className="editor builder">
       <div className="editor-toolbar">
@@ -809,27 +946,27 @@ function Editor({
               </select>
             </label>
             <label>
-              <span className="ekey">Total cap <span className="field-flag required">required</span></span>
+              <span className="ekey">{fieldWithPathButton("Total cap", () => openMarketSeriesEditor("total_cap"), true)}</span>
               {numInput(workingYear.total_cap, (value) => updateYear({ total_cap: value }), 1, 0)}
             </label>
             <label>
-              <span className="ekey">Auction offered <span className="field-flag required">required</span></span>
+              <span className="ekey">{fieldWithPathButton("Auction offered", () => openMarketSeriesEditor("auction_offered"), true)}</span>
               {numInput(workingYear.auction_offered || 0, (value) => updateYear({ auction_offered: value }), 1, 0)}
             </label>
             <label>
-              <span className="ekey">Reserved allowances <span className="field-flag optional">optional</span></span>
+              <span className="ekey">{fieldWithPathButton("Reserved allowances", () => openMarketSeriesEditor("reserved_allowances"), false, true)}</span>
               {numInput(workingYear.reserved_allowances || 0, (value) => updateYear({ reserved_allowances: value }), 1, 0)}
             </label>
             <label>
-              <span className="ekey">Cancelled allowances <span className="field-flag optional">optional</span></span>
+              <span className="ekey">{fieldWithPathButton("Cancelled allowances", () => openMarketSeriesEditor("cancelled_allowances"), false, true)}</span>
               {numInput(workingYear.cancelled_allowances || 0, (value) => updateYear({ cancelled_allowances: value }), 1, 0)}
             </label>
             <label>
-              <span className="ekey">Auction reserve price <span className="field-flag optional">optional</span></span>
+              <span className="ekey">{fieldWithPathButton("Auction reserve price", () => openMarketSeriesEditor("auction_reserve_price"), false, true)}</span>
               {numInput(workingYear.auction_reserve_price || 0, (value) => updateYear({ auction_reserve_price: value }), 1, 0)}
             </label>
             <label>
-              <span className="ekey">Minimum bid coverage <span className="field-flag optional">optional</span></span>
+              <span className="ekey">{fieldWithPathButton("Minimum bid coverage", () => openMarketSeriesEditor("minimum_bid_coverage"), false, true)}</span>
               {numInput(workingYear.minimum_bid_coverage || 0, (value) => updateYear({ minimum_bid_coverage: value }), 0.05, 0)}
             </label>
             <label>
@@ -844,11 +981,11 @@ function Editor({
               </select>
             </label>
             <label>
-              <span className="ekey">Price floor <span className="field-flag required">required</span></span>
+              <span className="ekey">{fieldWithPathButton("Price floor", () => openMarketSeriesEditor("price_lower_bound"), true)}</span>
               {numInput(workingYear.price_lower_bound, (value) => updateYear({ price_lower_bound: value }), 1, 0)}
             </label>
             <label>
-              <span className="ekey">Price ceiling <span className="field-flag required">required</span></span>
+              <span className="ekey">{fieldWithPathButton("Price ceiling", () => openMarketSeriesEditor("price_upper_bound"), true)}</span>
               {numInput(workingYear.price_upper_bound, (value) => updateYear({ price_upper_bound: value }), 1, 0)}
             </label>
             <label>
@@ -872,8 +1009,24 @@ function Editor({
               </select>
             </label>
             <label>
-              <span className="ekey">Borrowing limit <span className="field-flag optional">optional</span></span>
+              <span className="ekey">{fieldWithPathButton("Borrowing limit", () => openMarketSeriesEditor("borrowing_limit"), false, true)}</span>
               {numInput(workingYear.borrowing_limit || 0, (value) => updateYear({ borrowing_limit: value }), 1, 0)}
+            </label>
+            <label>
+              <span className="ekey">Expectation rule <span className="field-flag optional">optional</span></span>
+              <select
+                value={workingYear.expectation_rule || "next_year_baseline"}
+                onChange={(event) => updateYear({ expectation_rule: event.target.value })}
+              >
+                <option value="myopic">myopic</option>
+                <option value="next_year_baseline">next_year_baseline</option>
+                <option value="perfect_foresight">perfect_foresight</option>
+                <option value="manual">manual</option>
+              </select>
+            </label>
+            <label>
+              <span className="ekey">{fieldWithPathButton("Manual expected price", () => openMarketSeriesEditor("manual_expected_price"), false, true)}</span>
+              {numInput(workingYear.manual_expected_price || 0, (value) => updateYear({ manual_expected_price: value }), 1, 0)}
             </label>
           </div>
         </section>
@@ -974,15 +1127,15 @@ function Editor({
                         </select>
                       </label>
                       <label>
-                        <span className="ekey">Initial emissions <span className="field-flag required">required</span></span>
+                        <span className="ekey">{fieldWithPathButton("Initial emissions", () => openParticipantSeriesEditor("initial_emissions"), true)}</span>
                         {numInput(participant.initial_emissions, (value) => updateParticipant(selectedParticipantIndex, { initial_emissions: value }), 1, 0)}
                       </label>
                       <label>
-                        <span className="ekey">Free allocation ratio <span className="field-flag required">required</span></span>
+                        <span className="ekey">{fieldWithPathButton("Free allocation ratio", () => openParticipantSeriesEditor("free_allocation_ratio"), true)}</span>
                         {numInput(participant.free_allocation_ratio, (value) => updateParticipant(selectedParticipantIndex, { free_allocation_ratio: value }), 0.05, 0)}
                       </label>
                       <label>
-                        <span className="ekey">Penalty price <span className="field-flag required">required</span></span>
+                        <span className="ekey">{fieldWithPathButton("Penalty price", () => openParticipantSeriesEditor("penalty_price"), true)}</span>
                         {numInput(participant.penalty_price, (value) => updateParticipant(selectedParticipantIndex, { penalty_price: value }), 1, 0)}
                       </label>
                     </div>
@@ -1128,19 +1281,19 @@ function Editor({
                               />
                             </label>
                             <label>
-                              <span className="ekey">Fixed cost <span className="field-flag optional">optional</span></span>
+                              <span className="ekey">{fieldWithPathButton("Fixed cost", () => openTechnologySeriesEditor("fixed_cost"), false, true)}</span>
                               {numInput(selectedTechnology.fixed_cost || 0, (value) => updateTechnologyOption(selectedParticipantIndex, selectedTechnologyIndex, { fixed_cost: value }), 1, 0, fieldHelp.fixed_cost)}
                             </label>
                             <label>
-                              <span className="ekey">Technology emissions <span className="field-flag required">required</span></span>
+                              <span className="ekey">{fieldWithPathButton("Technology emissions", () => openTechnologySeriesEditor("initial_emissions"), true)}</span>
                               {numInput(selectedTechnology.initial_emissions || 0, (value) => updateTechnologyOption(selectedParticipantIndex, selectedTechnologyIndex, { initial_emissions: value }), 1, 0)}
                             </label>
                             <label>
-                              <span className="ekey">Technology free ratio <span className="field-flag required">required</span></span>
+                              <span className="ekey">{fieldWithPathButton("Technology free ratio", () => openTechnologySeriesEditor("free_allocation_ratio"), true)}</span>
                               {numInput(selectedTechnology.free_allocation_ratio || 0, (value) => updateTechnologyOption(selectedParticipantIndex, selectedTechnologyIndex, { free_allocation_ratio: value }), 0.05, 0)}
                             </label>
                             <label>
-                              <span className="ekey">Technology penalty price <span className="field-flag required">required</span></span>
+                              <span className="ekey">{fieldWithPathButton("Technology penalty price", () => openTechnologySeriesEditor("penalty_price"), true)}</span>
                               {numInput(selectedTechnology.penalty_price || 0, (value) => updateTechnologyOption(selectedParticipantIndex, selectedTechnologyIndex, { penalty_price: value }), 1, 0)}
                             </label>
                           </div>
@@ -1187,6 +1340,7 @@ function Editor({
               <span className="ekey">Intertemporal rules</span>
               <strong>{workingYear.banking_allowed ? "Banking on" : "Banking off"}</strong>
               <span className="muted">{workingYear.borrowing_allowed ? `Borrowing up to ${fmt.num(workingYear.borrowing_limit || 0, 0)}` : "Borrowing off"}</span>
+              <span className="muted">Expectations: {workingYear.expectation_rule || "next_year_baseline"}{(workingYear.expectation_rule || "next_year_baseline") === "manual" ? ` (${fmt.price(workingYear.manual_expected_price || 0)})` : ""}</span>
             </div>
           </div>
           <div className="builder-review-table">
@@ -1213,8 +1367,21 @@ function Editor({
           </div>
         </section>
       )}
+
+      {seriesEditor ? (
+        <YearSeriesModal
+          title={seriesEditor.title}
+          field={seriesEditor.field}
+          years={scenarioYearsWithDraft}
+          values={seriesEditor.values}
+          description={seriesEditor.description}
+          onClose={() => setSeriesEditor(null)}
+          onSave={applySeriesEdit}
+          step={getSeriesFieldMeta(seriesEditor.field).step}
+          min={getSeriesFieldMeta(seriesEditor.field).min}
+          max={getSeriesFieldMeta(seriesEditor.field).max}
+        />
+      ) : null}
     </div>
   );
 }
-
-window.Editor = Editor;

@@ -1,4 +1,5 @@
-const { useMemo: useMemo3, useState: useState3 } = React;
+import { useMemo, useState } from "react";
+import { fmt } from "./MarketChart.jsx";
 
 function AnnualMetricPanel({ title, unitLabel, color, type, rows, metricKey, onSelectYear }) {
   const W = 720;
@@ -6,9 +7,9 @@ function AnnualMetricPanel({ title, unitLabel, color, type, rows, metricKey, onS
   const PAD = { t: 18, r: 22, b: 38, l: 76 };
   const iw = W - PAD.l - PAD.r;
   const ih = H - PAD.t - PAD.b;
-  const [hoverIndex, setHoverIndex] = useState3(null);
+  const [hoverIndex, setHoverIndex] = useState(null);
 
-  const maxValue = useMemo3(() => {
+  const maxValue = useMemo(() => {
     const peak = Math.max(...rows.map((row) => Number(row[metricKey] || 0)), 1);
     return peak * 1.1;
   }, [rows, metricKey]);
@@ -126,8 +127,8 @@ function AnnualMetricPanel({ title, unitLabel, color, type, rows, metricKey, onS
   );
 }
 
-function AnnualMarketChart({ scenario, results, onSelectYear }) {
-  const rows = useMemo3(
+export function AnnualMarketChart({ scenario, results, onSelectYear }) {
+  const rows = useMemo(
     () =>
       (scenario?.years || []).map((year) => {
         const result = results?.[scenario.name]?.[String(year.year)] || {};
@@ -173,5 +174,3 @@ function AnnualMarketChart({ scenario, results, onSelectYear }) {
     </div>
   );
 }
-
-window.AnnualMarketChart = AnnualMarketChart;

@@ -188,8 +188,8 @@ class MarketParticipant:
     ) -> float:
         abatement = float(np.clip(abatement, 0.0, technology.max_abatement))
         residual_emissions = technology.initial_emissions - abatement
-        free_allocation = self.free_allocation
-        effective_current_price = min(carbon_price, self.penalty_price)
+        free_allocation = technology.free_allocation
+        effective_current_price = min(carbon_price, technology.penalty_price)
         natural_balance = free_allocation + starting_bank_balance - residual_emissions
 
         if natural_balance >= 0.0:
@@ -212,7 +212,7 @@ class MarketParticipant:
             free_allocation + starting_bank_balance - residual_emissions - ending_bank_balance,
         )
 
-        if carbon_price <= self.penalty_price:
+        if carbon_price <= technology.penalty_price:
             allowance_buys = shortage
             penalty_emissions = 0.0
         else:
@@ -221,7 +221,7 @@ class MarketParticipant:
 
         abatement_cost = self._abatement_cost(technology, abatement)
         allowance_cost = allowance_buys * carbon_price
-        penalty_cost = penalty_emissions * self.penalty_price
+        penalty_cost = penalty_emissions * technology.penalty_price
         sales_revenue = surplus * carbon_price
         return (
             technology.fixed_cost
@@ -279,12 +279,12 @@ class MarketParticipant:
                     borrowing_allowed,
                     bounded_borrowing_limit,
                 ),
-            )
+        )
 
         abatement = float(np.clip(abatement, 0.0, technology.max_abatement))
         residual_emissions = technology.initial_emissions - abatement
-        free_allocation = self.free_allocation
-        effective_current_price = min(bounded_price, self.penalty_price)
+        free_allocation = technology.free_allocation
+        effective_current_price = min(bounded_price, technology.penalty_price)
         natural_balance = free_allocation + starting_bank_balance - residual_emissions
 
         if natural_balance >= 0.0:
@@ -307,7 +307,7 @@ class MarketParticipant:
             free_allocation + starting_bank_balance - residual_emissions - ending_bank_balance,
         )
 
-        if bounded_price <= self.penalty_price:
+        if bounded_price <= technology.penalty_price:
             allowance_buys = shortage_after_inventory
             penalty_emissions = 0.0
         else:
@@ -317,7 +317,7 @@ class MarketParticipant:
 
         abatement_cost = self._abatement_cost(technology, abatement)
         allowance_cost = allowance_buys * bounded_price
-        penalty_cost = penalty_emissions * self.penalty_price
+        penalty_cost = penalty_emissions * technology.penalty_price
         sales_revenue = allowance_sells * bounded_price
         total_cost = (
             technology.fixed_cost
@@ -341,7 +341,7 @@ class MarketParticipant:
             technology_name=technology.name,
             initial_emissions=technology.initial_emissions,
             free_allocation=free_allocation,
-            penalty_price=self.penalty_price,
+            penalty_price=technology.penalty_price,
             starting_bank_balance=starting_bank_balance,
             ending_bank_balance=ending_bank_balance,
             expected_future_price=expected_future_price,

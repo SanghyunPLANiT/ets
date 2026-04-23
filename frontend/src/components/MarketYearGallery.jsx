@@ -1,4 +1,7 @@
-function MarketYearGallery({ scenario, results, activeYear, onSelectYear }) {
+import { MiniMarket } from "./AppShared.jsx";
+import { fmt } from "./MarketChart.jsx";
+
+export function MarketYearGallery({ scenario, results, activeYear, onSelectYear }) {
   const rows = (scenario?.years || []).map((year) => ({
     year: String(year.year),
     yearConfig: year,
@@ -26,5 +29,3 @@ function MarketYearGallery({ scenario, results, activeYear, onSelectYear }) {
     </div>
   );
 }
-
-window.MarketYearGallery = MarketYearGallery;
