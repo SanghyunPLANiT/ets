@@ -26,6 +26,7 @@ export function ParticipantPanel({ year, result, onEdit, onSelectParticipant, se
                 <div className="pname">{r.name}</div>
                 <div className="psector" style={{ color }}>{part.sector}</div>
                 {r.technology && <div className="ptech">{r.technology}</div>}
+                {r.technology_mix ? <div className="ptech">{r.technology_mix}</div> : null}
               </div>
               <div className="prow-stats">
                 <div className="stat"><span className="label">Emissions</span><span className="val">{fmt.num(r.initial, 0)}</span></div>

@@ -290,6 +290,9 @@ class CarbonMarket:
                 "Scenario": self.scenario_name,
                 "Participant": participant.name,
                 "Chosen Technology": outcome.technology_name,
+                "Technology Mix": "; ".join(
+                    f"{name}:{share:.4f}" for name, share in outcome.technology_mix
+                ),
                 "Initial Emissions": outcome.initial_emissions,
                 "Free Allocation": outcome.free_allocation,
                 "Abatement": outcome.abatement,
@@ -375,6 +378,7 @@ class CarbonMarket:
         for _, row in participant_df.iterrows():
             participant_name = str(row["Participant"])
             summary[f"{participant_name} Technology"] = str(row["Chosen Technology"])
+            summary[f"{participant_name} Technology Mix"] = str(row.get("Technology Mix", ""))
             summary[f"{participant_name} Abatement"] = float(row["Abatement"])
             summary[f"{participant_name} Net Trade"] = float(
                 row["Net Allowances Traded"]

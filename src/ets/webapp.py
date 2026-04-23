@@ -133,6 +133,7 @@ def _build_dashboard_payload(config: dict) -> dict:
                     {
                         "name": row["Participant"],
                         "technology": row.get("Chosen Technology", "Base Technology"),
+                        "technology_mix": row.get("Technology Mix", ""),
                         "initial": row["Initial Emissions"],
                         "free": row["Free Allocation"],
                         "abatement": row["Abatement"],

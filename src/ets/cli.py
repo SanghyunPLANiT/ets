@@ -15,6 +15,7 @@ SAMPLE_MODES = {
     "threshold": EXAMPLES_DIR / "climate_solutions_threshold_pathway.json",
     "mac": EXAMPLES_DIR / "climate_solutions_mac_pathway.json",
     "technology": EXAMPLES_DIR / "climate_solutions_technology_switching.json",
+    "partial": EXAMPLES_DIR / "climate_solutions_partial_adoption.json",
     "banking": EXAMPLES_DIR / "climate_solutions_banking_borrowing.json",
     "auction": EXAMPLES_DIR / "climate_solutions_auction_controls.json",
     "compare": EXAMPLES_DIR / "climate_solutions_compare_suite.json",

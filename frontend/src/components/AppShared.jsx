@@ -16,6 +16,7 @@ const SERIES_FIELD_META = {
   free_allocation_ratio: { label: "Free allocation ratio", step: 0.05, min: 0, max: 1, format: (value) => fmt.num(value, 2) },
   penalty_price: { label: "Penalty price", step: 1, min: 0, format: (value) => fmt.price(value) },
   fixed_cost: { label: "Fixed cost", step: 1, min: 0, format: (value) => fmt.num(value, 0) },
+  max_activity_share: { label: "Adoption share cap", step: 0.05, min: 0, max: 1, format: (value) => fmt.num(value, 2) },
 };
 
 function getSeriesFieldMeta(field) {
@@ -109,6 +110,7 @@ function buildDraftResult(year) {
       sales_revenue: 0,
       total_compliance_cost: 0,
       sector: participant.sector || "Other",
+      technology_mix: "",
     };
   });
   const baselineTotal = perParticipant.reduce((sum, participant) => sum + participant.net_trade, 0);
@@ -208,6 +210,9 @@ function validateTechnology(option, scope, target = null) {
   }
   if (Number(option?.penalty_price ?? 0) <= 0) issues.push(makeIssue("error", scope, "Technology penalty price must be positive.", target));
   if (Number(option?.fixed_cost ?? 0) < 0) issues.push(makeIssue("error", scope, "Technology fixed cost must be non-negative.", target));
+  if (Number(option?.max_activity_share ?? 1) < 0 || Number(option?.max_activity_share ?? 1) > 1) {
+    issues.push(makeIssue("error", scope, "Technology adoption share cap must be between 0 and 1.", target));
+  }
   if (option?.abatement_type === "piecewise" && !(option?.mac_blocks || []).length) {
     issues.push(makeIssue("error", scope, "Piecewise technology option requires MAC blocks.", target));
   }

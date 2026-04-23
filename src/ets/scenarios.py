@@ -66,6 +66,7 @@ def blank_technology_option() -> dict[str, Any]:
     option = blank_participant()
     option["name"] = "New Technology"
     option["fixed_cost"] = 0.0
+    option["max_activity_share"] = 1.0
     option.pop("technology_options", None)
     return option
 
@@ -299,6 +300,7 @@ def normalize_technology_option(
         "cost_slope",
         "threshold_cost",
         "fixed_cost",
+        "max_activity_share",
     ]
     for field in numeric_fields:
         option[field] = float(option[field])
@@ -462,5 +464,6 @@ def build_technology_option(option: dict[str, Any]) -> TechnologyOption:
         penalty_price=option["penalty_price"],
         marginal_abatement_cost=marginal_abatement_cost,
         max_abatement_share=max_abatement_share,
+        max_activity_share=option["max_activity_share"],
         fixed_cost=option["fixed_cost"],
     )

@@ -332,6 +332,7 @@ export function Editor({
     threshold_cost: participant?.threshold_cost || 0,
     mac_blocks: [],
     fixed_cost: 0,
+    max_activity_share: 1,
   });
 
   const serializeMacBlocks = (item) =>
@@ -524,6 +525,7 @@ export function Editor({
       threshold_cost: 0,
       mac_blocks: lowCarbonBlocks,
       fixed_cost: Math.max(25, Math.round(Number(source.initial_emissions || 0) * (source.sector === "Power" ? 0.45 : 0.85))),
+      max_activity_share: 1,
     };
     updateParticipant(participantIndex, { technology_options: [incumbent, lowCarbon] });
     setSelectedTechnologyIndex(1);
@@ -567,6 +569,7 @@ export function Editor({
       threshold_cost: Number(participant.threshold_cost || 0),
       mac_blocks: structuredClone(participant.mac_blocks || []),
       fixed_cost: 0,
+      max_activity_share: 1,
     };
     const lowCarbonOptions = wizardReplacements
       .map((replacementId) => {
@@ -593,6 +596,7 @@ export function Editor({
             10,
             Math.round(Number(participant.initial_emissions || 0) * replacement.fixedCostMultiplier * mode.fixedCost)
           ),
+          max_activity_share: 1,
         };
       })
       .filter(Boolean);
@@ -1234,6 +1238,7 @@ export function Editor({
                                   <span>Emissions {fmt.num(option.initial_emissions || 0, 1)}</span>
                                   <span>Free ratio {fmt.num(option.free_allocation_ratio || 0, 2)}</span>
                                   <span>Fixed cost {fmt.num(option.fixed_cost || 0, 0)}</span>
+                                  <span>Cap {fmt.num(option.max_activity_share ?? 1, 2)}</span>
                                   <span>MAC blocks {(option.mac_blocks || []).length}</span>
                                 </div>
                               </div>
@@ -1283,6 +1288,10 @@ export function Editor({
                             <label>
                               <span className="ekey">{fieldWithPathButton("Fixed cost", () => openTechnologySeriesEditor("fixed_cost"), false, true)}</span>
                               {numInput(selectedTechnology.fixed_cost || 0, (value) => updateTechnologyOption(selectedParticipantIndex, selectedTechnologyIndex, { fixed_cost: value }), 1, 0, fieldHelp.fixed_cost)}
+                            </label>
+                            <label>
+                              <span className="ekey">{fieldWithPathButton("Adoption share cap", () => openTechnologySeriesEditor("max_activity_share"), false, true)}</span>
+                              {numInput(selectedTechnology.max_activity_share ?? 1, (value) => updateTechnologyOption(selectedParticipantIndex, selectedTechnologyIndex, { max_activity_share: value }), 0.05, 0)}
                             </label>
                             <label>
                               <span className="ekey">{fieldWithPathButton("Technology emissions", () => openTechnologySeriesEditor("initial_emissions"), true)}</span>
