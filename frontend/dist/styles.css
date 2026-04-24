@@ -86,7 +86,9 @@ body {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   margin-top: 6px;
-  max-width: 72ch;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hdr-scenarios {

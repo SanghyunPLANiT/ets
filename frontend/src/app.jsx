@@ -23,7 +23,7 @@ export default function App() {
   const [activeSection, setActiveSection] = useS("build");
   const [selPart, setSelPart] = useS(null);
   const [validationTarget, setValidationTarget] = useS(null);
-  const [status, setStatus] = useS("Loading templates…");
+  const [status, setStatus] = useS("Loading…");
   const [tweaksOpen, setTweaksOpen] = useS(false);
   const [tweakState, setTweakState] = useS({
     dark: false,
@@ -98,15 +98,15 @@ export default function App() {
       setResults({});
       setSummary([]);
       setAnalysis([]);
-      setStatus("Template loaded. Review or edit inputs, then run the scenario.");
+      setStatus("Loaded");
     } catch (error) {
-      setStatus(`Failed to load templates: ${error.message}`);
+      setStatus("Load failed");
     }
   }
 
   async function saveActiveScenarioToLibrary() {
     if (!activeScenario) return;
-    setStatus(`Saving ${activeScenario.name} to user scenario library…`);
+    setStatus("Saving…");
     try {
       const response = await fetch("/api/save-scenario", {
         method: "POST",
@@ -126,15 +126,15 @@ export default function App() {
         });
         return next;
       });
-      setStatus(`Saved ${activeScenario.name} to ${payload.path}`);
+      setStatus("Saved");
     } catch (error) {
-      setStatus(`Save failed: ${error.message}`);
+      setStatus("Save failed");
     }
   }
 
   async function runSimulation(configOverride = null) {
     const payloadConfig = structuredClone(configOverride || configRef.current);
-    setStatus("Running model…");
+    setStatus("Running…");
     try {
       const response = await fetch("/api/run", {
         method: "POST",
@@ -157,9 +157,9 @@ export default function App() {
       if (scenario && !scenario.years.some((y) => String(y.year) === String(activeYear))) {
         setActiveYear(scenario.years?.[0]?.year || null);
       }
-      setStatus("Simulation complete. Interactive results updated.");
+      setStatus("Complete");
     } catch (error) {
-      setStatus(`Run failed: ${error.message}`);
+      setStatus("Run failed");
     }
   }
 
@@ -214,7 +214,7 @@ export default function App() {
     setActiveScenarioId(nextScenario.id);
     setActiveYear(String(nextScenario.years[0]?.year || "2030"));
     setSelPart(null);
-    setStatus(`Added ${nextScenario.name}. Configure it step by step, then run the scenario.`);
+    setStatus("Scenario added");
   };
 
   const duplicateScenario = () => {
@@ -229,7 +229,7 @@ export default function App() {
     setActiveScenarioId(nextScenario.id);
     setActiveYear(String(nextScenario.years?.[0]?.year || "2030"));
     setSelPart(null);
-    setStatus(`Duplicated ${activeScenario.name}.`);
+    setStatus("Duplicated");
   };
 
   const removeScenario = () => {
@@ -242,7 +242,7 @@ export default function App() {
     setActiveScenarioId(remaining[0]?.id || null);
     setActiveYear(String(remaining[0]?.years?.[0]?.year || ""));
     setSelPart(null);
-    setStatus(`Removed ${activeScenario.name}.`);
+    setStatus("Removed");
   };
 
   const addYear = () => {
@@ -285,7 +285,7 @@ export default function App() {
       ),
     }));
     setActiveYear(String(yearDraft.year));
-    setStatus(`Saved changes for ${scenarioDraft.name} · ${yearDraft.year}`);
+    setStatus("Saved");
   };
 
   const updateYearSeriesValue = (field, valuesByYear) => {
@@ -304,7 +304,7 @@ export default function App() {
             }
       ),
     }));
-    setStatus(`Updated ${field.replaceAll("_", " ")} across ${activeScenario.name}.`);
+    setStatus("Updated");
   };
 
   const removeYear = () => {
@@ -353,7 +353,7 @@ export default function App() {
       activeScenario.id
     );
     if (!importedScenarios.length) {
-      setStatus(`Template ${template.name} has no scenarios to import.`);
+      setStatus("Load failed");
       return;
     }
     const [replacementScenario, ...additionalScenarios] = importedScenarios;
@@ -374,11 +374,7 @@ export default function App() {
     setActiveYear(replacementScenario?.years?.[0]?.year || null);
     setSelPart(null);
     setValidationTarget(null);
-    setStatus(
-      additionalScenarios.length
-        ? `Loaded template: ${template.name}. Replaced ${activeScenario.name} and added ${additionalScenarios.length} additional scenario${additionalScenarios.length > 1 ? "s" : ""}.`
-        : `Loaded template: ${template.name}. Replaced ${activeScenario.name}.`
-    );
+    setStatus("Loaded");
   };
 
   const navigateValidationIssue = (issue) => {
@@ -397,10 +393,10 @@ export default function App() {
     if (target.section && target.section !== "validation") {
       setValidationTarget({ ...target, token: Date.now() });
       setActiveSection(target.section);
-      setStatus(`Opened ${issue.scope} in ${target.section}.`);
+      setStatus("Opened");
       return;
     }
-    setStatus(`Focused ${issue.scope}.`);
+    setStatus("Focused");
   };
 
   if (!activeScenario || !yearObj || !displayResult) {
