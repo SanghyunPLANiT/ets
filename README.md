@@ -23,8 +23,8 @@ A web-based **Emissions Trading System (ETS) simulator** that computes carbon ma
 | [docs/mac-abatement.md](docs/mac-abatement.md) | Marginal Abatement Cost models — linear, piecewise, threshold — maths, code, examples |
 | [docs/technology-transition.md](docs/technology-transition.md) | Endogenous technology choice, mixed portfolio optimisation, transition pathways |
 | [docs/market-equilibrium.md](docs/market-equilibrium.md) | Brent's method equilibrium solver, auction mechanics, price bounds, edge cases |
-| [docs/multi-year-simulation.md](docs/multi-year-simulation.md) | Banking, borrowing, expectation rules, perfect foresight fixed-point iteration |
-| [docs/data-model.md](docs/data-model.md) | JSON configuration schema, validation rules, all fields explained |
+| [docs/multi-year-simulation.md](docs/multi-year-simulation.md) | Banking, borrowing, expectation rules, perfect foresight fixed-point iteration, rational expectations equilibrium |
+| [docs/data-model.md](docs/data-model.md) | Full JSON config schema, every field's type / default / validation, minimal and full examples |
 
 ---
 
