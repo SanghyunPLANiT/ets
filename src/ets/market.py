@@ -54,6 +54,8 @@ class CarbonMarket:
         self.expectation_rule = str(expectation_rule)
         self.manual_expected_price = float(manual_expected_price)
         self.penalty_price_multiplier = float(penalty_price_multiplier)
+        # CBAM / MSR — set post-construction via scenarios.py
+        self.eua_price: float = 0.0          # external EUA reference price this year
 
         free_allocations = sum(participant.free_allocation for participant in participants)
         allowance_supply = (
@@ -288,6 +290,19 @@ class CarbonMarket:
                 bank_balances=bank_balances,
                 expected_future_price=expected_future_price,
             )
+            # ── CBAM liability ──────────────────────────────────────────────
+            eua_price = float(getattr(self, "eua_price", 0.0) or 0.0)
+            kau_price = float(equilibrium_price)
+            cbam_gap = max(0.0, eua_price - kau_price)
+            cbam_export_share = float(getattr(participant, "cbam_export_share", 0.0) or 0.0)
+            cbam_coverage = float(getattr(participant, "cbam_coverage_ratio", 1.0) or 1.0)
+            # Liability on CBAM-exposed residual emissions
+            cbam_liable_emissions = (
+                outcome.residual_emissions * cbam_export_share * cbam_coverage
+            )
+            cbam_liability = cbam_gap * cbam_liable_emissions
+            total_cost_incl_cbam = outcome.total_cost + cbam_liability
+
             record: Dict[str, float | str] = {
                 "Scenario": self.scenario_name,
                 "Participant": participant.name,
@@ -314,6 +329,12 @@ class CarbonMarket:
                 "Penalty Cost": outcome.penalty_cost,
                 "Sales Revenue": outcome.sales_revenue,
                 "Total Compliance Cost": outcome.total_cost,
+                "EUA Price": eua_price,
+                "CBAM Gap": cbam_gap,
+                "CBAM Export Share": cbam_export_share,
+                "CBAM Liable Emissions": cbam_liable_emissions,
+                "CBAM Liability": cbam_liability,
+                "Total Cost incl. CBAM": total_cost_incl_cbam,
             }
             if self.year is not None:
                 record["Year"] = self.year
@@ -374,6 +395,15 @@ class CarbonMarket:
             "Total Compliance Cost": float(
                 participant_df["Total Compliance Cost"].sum()
             ),
+            # ── CBAM aggregates ────────────────────────────────────────────
+            "EUA Price": float(getattr(self, "eua_price", 0.0) or 0.0),
+            "CBAM Gap": float(participant_df["CBAM Gap"].iloc[0]) if len(participant_df) else 0.0,
+            "Total CBAM Liability": float(participant_df["CBAM Liability"].sum()),
+            "Total Cost incl. CBAM": float(participant_df["Total Cost incl. CBAM"].sum()),
+            # ── MSR aggregates (filled by simulation.py) ───────────────────
+            "MSR Withheld": 0.0,
+            "MSR Released": 0.0,
+            "MSR Reserve Pool": 0.0,
         }
         if self.year is not None:
             summary["Year"] = self.year

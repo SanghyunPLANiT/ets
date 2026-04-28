@@ -13,6 +13,7 @@ const SERIES_FIELD_META = {
   borrowing_limit: { label: "Borrowing limit", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => `${fmt.num(value, 0)} Mt`, description: "Maximum volume a participant may borrow from a future period's allocation to cover current compliance. Requires borrowing to be enabled." },
   manual_expected_price: { label: "Manual expected price", unit: "$/t", step: 1, min: 0, format: (value) => fmt.price(value), description: "Overrides the expectation rule and sets the future carbon price assumption manually. Only active when expectation rule is set to Manual." },
   carbon_budget: { label: "Carbon budget", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => `${fmt.num(value, 0)} Mt`, description: "Annual carbon budget for the Hotelling rule approach. The solver finds the shadow price λ such that cumulative residual emissions equal the cumulative budget across all years." },
+  eua_price: { label: "EUA price (external)", unit: "$/t", step: 1, min: 0, format: (value) => fmt.price(value), description: "EU ETS allowance price for this year (external input). Used to compute CBAM liability = max(0, EUA − KAU) × CBAM-exposed residual emissions." },
   initial_emissions: { label: "Initial emissions", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => fmt.num(value, 1), description: "Gross emissions before any abatement. This is the participant's baseline coverage obligation each year." },
   free_allocation_ratio: { label: "Free allocation ratio", unit: "ratio 0–1", step: 0.05, min: 0, max: 1, format: (value) => fmt.num(value, 2), description: "Share of a participant's initial emissions covered by free allowances. 1.0 means fully covered for free; 0 means no free allocation." },
   penalty_price: { label: "Penalty price", unit: "$/t", step: 1, min: 0, format: (value) => fmt.price(value), description: "Price paid per tonne of uncovered emissions when a participant exceeds their allowance holdings. Acts as a compliance ceiling." },
@@ -41,6 +42,8 @@ function makeBlankParticipant(index = 1) {
     cost_slope: 1,
     threshold_cost: 0,
     mac_blocks: [],
+    cbam_export_share: 0,
+    cbam_coverage_ratio: 1,
   };
 }
 
@@ -63,6 +66,7 @@ function makeBlankYear(label = "2030") {
     expectation_rule: "next_year_baseline",
     manual_expected_price: 0,
     carbon_budget: 0,
+    eua_price: 0,
     participants: [],
   };
 }
@@ -86,6 +90,14 @@ function makeBlankScenario(index = 1) {
     solver_nash_max_iters: 120,
     solver_nash_convergence_tol: 0.001,
     solver_penalty_price_multiplier: 1.25,
+    // ── MSR settings ──────────────────────────────────────────────────────
+    msr_enabled: false,
+    msr_upper_threshold: 200,
+    msr_lower_threshold: 50,
+    msr_withhold_rate: 0.12,
+    msr_release_rate: 50,
+    msr_cancel_excess: false,
+    msr_cancel_threshold: 400,
     years: [makeBlankYear("2030")],
   };
 }

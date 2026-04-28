@@ -1133,6 +1133,71 @@ export function Editor({
               <span className="ekey">{fieldWithPathButton("Manual expected price", () => openMarketSeriesEditor("manual_expected_price"), false, true)}</span>
               {numInput(workingYear.manual_expected_price || 0, (value) => updateYear({ manual_expected_price: value }), 1, 0)}
             </label>
+            <label>
+              <span className="ekey">{fieldWithPathButton("EUA price (external)", () => openMarketSeriesEditor("eua_price"), false, true)}</span>
+              {numInput(workingYear.eua_price || 0, (value) => updateYear({ eua_price: value }), 1, 0)}
+            </label>
+          </div>
+
+          {/* ── MSR panel ────────────────────────────────────────────────── */}
+          <div className="msr-panel">
+            <div className="msr-panel-head">
+              <div className="msr-panel-title-row">
+                <span className="msr-panel-label">Market Stability Reserve (MSR)</span>
+                <label className="msr-enabled-toggle">
+                  <input
+                    type="checkbox"
+                    checked={!!workingScenario.msr_enabled}
+                    onChange={(e) => updateScenario({ msr_enabled: e.target.checked })}
+                  />
+                  <span>Enable MSR</span>
+                </label>
+              </div>
+              <p className="msr-panel-hint">
+                Automatically adjusts auction supply based on total banked allowances.
+                Withholds volume when the bank is too large; releases from reserve when the bank is too small.
+              </p>
+            </div>
+            {workingScenario.msr_enabled && (
+              <div className="msr-params-grid">
+                <label>
+                  <span className="ekey">Upper threshold (Mt) <span className="field-flag required">required</span></span>
+                  <span className="solver-settings-desc">Bank above this → withhold from auction. Default: 200 Mt</span>
+                  {numInput(workingScenario.msr_upper_threshold ?? 200, (v) => updateScenario({ msr_upper_threshold: Math.max(0, v) }), 10, 0)}
+                </label>
+                <label>
+                  <span className="ekey">Lower threshold (Mt) <span className="field-flag required">required</span></span>
+                  <span className="solver-settings-desc">Bank below this → release from reserve. Default: 50 Mt</span>
+                  {numInput(workingScenario.msr_lower_threshold ?? 50, (v) => updateScenario({ msr_lower_threshold: Math.max(0, v) }), 10, 0)}
+                </label>
+                <label>
+                  <span className="ekey">Withhold rate <span className="field-flag required">required</span></span>
+                  <span className="solver-settings-desc">Fraction of auction supply withheld per year (0–1). Default: 0.12 (12%)</span>
+                  {numInput(workingScenario.msr_withhold_rate ?? 0.12, (v) => updateScenario({ msr_withhold_rate: Math.min(1, Math.max(0, v)) }), 0.01, 0)}
+                </label>
+                <label>
+                  <span className="ekey">Release rate (Mt/yr) <span className="field-flag required">required</span></span>
+                  <span className="solver-settings-desc">Mt released from reserve per year when bank is below lower threshold. Default: 50 Mt</span>
+                  {numInput(workingScenario.msr_release_rate ?? 50, (v) => updateScenario({ msr_release_rate: Math.max(0, v) }), 5, 0)}
+                </label>
+                <label>
+                  <span className="ekey">Cancellation threshold (Mt) <span className="field-flag optional">optional</span></span>
+                  <span className="solver-settings-desc">Reserve pool above this is permanently cancelled if cancellation is enabled. Default: 400 Mt</span>
+                  {numInput(workingScenario.msr_cancel_threshold ?? 400, (v) => updateScenario({ msr_cancel_threshold: Math.max(0, v) }), 10, 0)}
+                </label>
+                <label className="msr-cancel-toggle-label">
+                  <span className="ekey">Cancel pool excess <span className="field-flag optional">optional</span></span>
+                  <span className="solver-settings-desc">Permanently retire reserve pool allowances above the cancellation threshold.</span>
+                  <select
+                    value={workingScenario.msr_cancel_excess ? "true" : "false"}
+                    onChange={(e) => updateScenario({ msr_cancel_excess: e.target.value === "true" })}
+                  >
+                    <option value="false">disabled</option>
+                    <option value="true">enabled</option>
+                  </select>
+                </label>
+              </div>
+            )}
           </div>
 
           {/* ── Advanced Solver Settings ─────────────────────────────────── */}
@@ -1374,6 +1439,36 @@ export function Editor({
                         {numInput(participant.penalty_price, (value) => updateParticipant(selectedParticipantIndex, { penalty_price: value }), 1, 0)}
                       </label>
                     </div>
+
+                    {/* ── CBAM exposure ────────────────────────────────── */}
+                    <div className="cbam-participant-panel">
+                      <div className="cbam-participant-head">
+                        <span className="cbam-participant-label">CBAM exposure</span>
+                        <span className="cbam-participant-hint">
+                          Carbon Border Adjustment Mechanism — set export share &gt; 0 to compute
+                          the CBAM liability on this participant's residual emissions.
+                        </span>
+                      </div>
+                      <div className="builder-form-grid">
+                        <label>
+                          <span className="ekey">Export share (EU CBAM) <span className="field-flag optional">optional</span></span>
+                          {numInput(
+                            participant.cbam_export_share ?? 0,
+                            (v) => updateParticipant(selectedParticipantIndex, { cbam_export_share: Math.min(1, Math.max(0, v)) }),
+                            0.05, 0
+                          )}
+                        </label>
+                        <label>
+                          <span className="ekey">CBAM coverage ratio <span className="field-flag optional">optional</span></span>
+                          {numInput(
+                            participant.cbam_coverage_ratio ?? 1,
+                            (v) => updateParticipant(selectedParticipantIndex, { cbam_coverage_ratio: Math.min(1, Math.max(0, v)) }),
+                            0.05, 0
+                          )}
+                        </label>
+                      </div>
+                    </div>
+
                     {renderAbatementFields(
                       participant,
                       (patch) => updateParticipant(selectedParticipantIndex, patch),

@@ -8,6 +8,7 @@ from typing import Any
 from .costs import linear_abatement_factory, piecewise_abatement_factory
 from .expectations import ALLOWED_EXPECTATION_RULES, validate_expectation_rule
 from .market import CarbonMarket
+from .msr import MSR_DEFAULTS
 from .participant import MarketParticipant, TechnologyOption
 
 ALLOWED_AUCTION_MODES = {"explicit", "derive_from_cap"}
@@ -25,6 +26,8 @@ def blank_scenario() -> dict[str, Any]:
         "model_approach": "competitive",
         "discount_rate": 0.04,
         "nash_strategic_participants": [],
+        # ── MSR settings ────────────────────────────────────────────────────
+        **MSR_DEFAULTS,
         # ── Solver / model settings (all user-overridable) ──────────────────
         # Competitive perfect-foresight iteration
         "solver_competitive_max_iters": 25,
@@ -62,6 +65,7 @@ def blank_year_config() -> dict[str, Any]:
         "borrowing_limit": 0.0,
         "expectation_rule": "next_year_baseline",
         "manual_expected_price": 0.0,
+        "eua_price": 0.0,
         "participants": [],
     }
 
@@ -78,6 +82,8 @@ def blank_participant() -> dict[str, Any]:
         "threshold_cost": 0.0,
         "mac_blocks": [],
         "technology_options": [],
+        "cbam_export_share": 0.0,
+        "cbam_coverage_ratio": 1.0,
     }
 
 
@@ -144,6 +150,14 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         "model_approach": model_approach,
         "discount_rate": _fval("discount_rate", 0.04),
         "nash_strategic_participants": list(scenario.get("nash_strategic_participants") or []),
+        # MSR
+        "msr_enabled": bool(scenario.get("msr_enabled", False)),
+        "msr_upper_threshold": _fval("msr_upper_threshold", 200.0),
+        "msr_lower_threshold": _fval("msr_lower_threshold", 50.0),
+        "msr_withhold_rate": _fval("msr_withhold_rate", 0.12),
+        "msr_release_rate": _fval("msr_release_rate", 50.0),
+        "msr_cancel_excess": bool(scenario.get("msr_cancel_excess", False)),
+        "msr_cancel_threshold": _fval("msr_cancel_threshold", 400.0),
         "solver_competitive_max_iters": int(_fval("solver_competitive_max_iters", 25)),
         "solver_competitive_tolerance": _fval("solver_competitive_tolerance", 0.001),
         "solver_hotelling_max_bisection_iters": int(_fval("solver_hotelling_max_bisection_iters", 80)),
@@ -212,6 +226,7 @@ def normalize_year(raw_year: dict[str, Any]) -> dict[str, Any]:
         year_config.get("manual_expected_price", 0.0)
     )
     year_config["carbon_budget"] = float(year_config.get("carbon_budget") or 0.0)
+    year_config["eua_price"] = float(year_config.get("eua_price") or 0.0)
 
     if year_config["auction_mode"] not in ALLOWED_AUCTION_MODES:
         raise ValueError(
@@ -271,9 +286,19 @@ def normalize_participant(raw_participant: dict[str, Any]) -> dict[str, Any]:
         "max_abatement",
         "cost_slope",
         "threshold_cost",
+        "cbam_export_share",
+        "cbam_coverage_ratio",
     ]
     for field in numeric_fields:
         participant[field] = float(participant[field])
+    if not 0.0 <= participant["cbam_export_share"] <= 1.0:
+        raise ValueError(
+            f"Participant '{participant['name']}' cbam_export_share must be between 0 and 1."
+        )
+    if not 0.0 <= participant["cbam_coverage_ratio"] <= 1.0:
+        raise ValueError(
+            f"Participant '{participant['name']}' cbam_coverage_ratio must be between 0 and 1."
+        )
     technology_options = participant.get("technology_options", [])
     if not isinstance(technology_options, list):
         raise ValueError(
@@ -397,6 +422,14 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
             "model_approach": scenario.get("model_approach", "competitive"),
             "discount_rate": scenario.get("discount_rate", 0.04),
             "nash_strategic_participants": scenario.get("nash_strategic_participants", []),
+            # MSR
+            "msr_enabled": scenario.get("msr_enabled", False),
+            "msr_upper_threshold": scenario.get("msr_upper_threshold", 200.0),
+            "msr_lower_threshold": scenario.get("msr_lower_threshold", 50.0),
+            "msr_withhold_rate": scenario.get("msr_withhold_rate", 0.12),
+            "msr_release_rate": scenario.get("msr_release_rate", 50.0),
+            "msr_cancel_excess": scenario.get("msr_cancel_excess", False),
+            "msr_cancel_threshold": scenario.get("msr_cancel_threshold", 400.0),
             "solver_competitive_max_iters": scenario.get("solver_competitive_max_iters", 25),
             "solver_competitive_tolerance": scenario.get("solver_competitive_tolerance", 0.001),
             "solver_hotelling_max_bisection_iters": scenario.get("solver_hotelling_max_bisection_iters", 80),
@@ -464,6 +497,15 @@ def build_market_from_year(
     market.discount_rate = float(meta.get("discount_rate") or 0.04)
     market.nash_strategic_participants = list(meta.get("nash_strategic_participants") or [])
     market.carbon_budget = float(year_config.get("carbon_budget") or 0.0)
+    market.eua_price = float(year_config.get("eua_price") or 0.0)
+    # Attach MSR settings
+    market.msr_enabled = bool(meta.get("msr_enabled", False))
+    market.msr_upper_threshold = float(meta.get("msr_upper_threshold") or 200.0)
+    market.msr_lower_threshold = float(meta.get("msr_lower_threshold") or 50.0)
+    market.msr_withhold_rate = float(meta.get("msr_withhold_rate") or 0.12)
+    market.msr_release_rate = float(meta.get("msr_release_rate") or 50.0)
+    market.msr_cancel_excess = bool(meta.get("msr_cancel_excess", False))
+    market.msr_cancel_threshold = float(meta.get("msr_cancel_threshold") or 400.0)
     # Attach solver settings
     market.solver_competitive_max_iters = int(meta.get("solver_competitive_max_iters") or 25)
     market.solver_competitive_tolerance = float(meta.get("solver_competitive_tolerance") or 0.001)
@@ -514,6 +556,8 @@ def build_participant(participant: dict[str, Any]) -> MarketParticipant:
         penalty_price=participant["penalty_price"],
         max_abatement_share=max_abatement_share,
         technology_options=technology_options or None,
+        cbam_export_share=float(participant.get("cbam_export_share") or 0.0),
+        cbam_coverage_ratio=float(participant.get("cbam_coverage_ratio") or 1.0),
     )
 
 

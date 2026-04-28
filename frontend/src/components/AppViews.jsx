@@ -47,6 +47,7 @@ function BuildView({
     "price_upper_bound",
     "borrowing_limit",
     "manual_expected_price",
+    "eua_price",
   ];
   const selectedMeta = getSeriesFieldMeta(selectedSeriesField);
   const orderedYears = useMemo(() => (scenario.years || []).map((year) => String(year.year)), [scenario.years]);

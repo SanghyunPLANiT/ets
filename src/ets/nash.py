@@ -33,6 +33,7 @@ import numpy as np
 from scipy.optimize import minimize_scalar
 
 from .market import CarbonMarket
+from .msr import MSRState
 from .simulation import _simulate_path_details
 from .expectations import build_expectation_specs, derive_expected_prices
 
@@ -274,13 +275,35 @@ def solve_nash_path(
     bank_balances = {p.name: 0.0 for p in ordered_markets[0].participants}
     carry_forward = 0.0
     details = []
+    msr_state = MSRState() if getattr(ordered_markets[0], "msr_enabled", False) else None
 
     for market in ordered_markets:
         expected_future_price = float(expected_prices.get(str(market.year), 0.0))
         starting_bank_balances = dict(bank_balances)
 
+        # ── MSR: adjust carry_forward before Nash solve ───────────────────
+        msr_withheld = 0.0
+        msr_released = 0.0
+        msr_pool = 0.0
+        effective_carry = carry_forward
+        if msr_state is not None and getattr(market, "msr_enabled", False):
+            total_bank = sum(bank_balances.values())
+            _, msr_withheld, msr_released = msr_state.apply(
+                total_bank=total_bank,
+                auction_offered=market.auction_offered,
+                upper_threshold=float(getattr(market, "msr_upper_threshold", 200.0)),
+                lower_threshold=float(getattr(market, "msr_lower_threshold", 50.0)),
+                withhold_rate=float(getattr(market, "msr_withhold_rate", 0.12)),
+                release_rate=float(getattr(market, "msr_release_rate", 50.0)),
+                cancel_excess=bool(getattr(market, "msr_cancel_excess", False)),
+                cancel_threshold=float(getattr(market, "msr_cancel_threshold", 400.0)),
+                year_label=str(market.year),
+            )
+            msr_pool = msr_state.reserve_pool
+            effective_carry = carry_forward + msr_released - msr_withheld
+
         equilibrium = _solve_nash_year(
-            market, bank_balances, expected_future_price, carry_forward, strategic_names,
+            market, bank_balances, expected_future_price, effective_carry, strategic_names,
             price_step=price_step, max_iters=max_iters, convergence_tol=convergence_tol,
         )
         equilibrium_price = float(equilibrium["price"])
@@ -297,6 +320,9 @@ def solve_nash_path(
             "starting_bank_balances": starting_bank_balances,
             "equilibrium": equilibrium,
             "participant_df": participant_df,
+            "msr_withheld": msr_withheld,
+            "msr_released": msr_released,
+            "msr_pool": msr_pool,
         })
 
         carry_forward = (

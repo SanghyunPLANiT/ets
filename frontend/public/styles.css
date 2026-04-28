@@ -2347,3 +2347,98 @@ html[data-chart="terminal"][data-theme="light"] { --panel: #fafaf7; --bg: #eeede
 @media (max-width: 600px) {
   .solver-settings-grid { grid-template-columns: 1fr; }
 }
+
+/* ── MSR Panel ───────────────────────────────────────────────────────────── */
+.msr-panel {
+  margin-top: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.msr-panel-head {
+  padding: 12px 14px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.msr-panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.msr-panel-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-1);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.msr-enabled-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-2);
+  cursor: pointer;
+  user-select: none;
+}
+.msr-enabled-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+.msr-panel-hint {
+  font-size: 0.76rem;
+  color: var(--text-3);
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+.msr-params-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px 16px;
+  padding: 14px 14px 18px;
+  background: var(--bg);
+}
+.msr-params-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+@media (max-width: 600px) {
+  .msr-params-grid { grid-template-columns: 1fr; }
+}
+
+/* ── CBAM Participant Panel ──────────────────────────────────────────────── */
+.cbam-participant-panel {
+  margin: 12px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.cbam-participant-head {
+  padding: 10px 12px 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cbam-participant-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-2);
+}
+.cbam-participant-hint {
+  font-size: 0.72rem;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+.cbam-participant-panel .builder-form-grid {
+  padding: 10px 12px 14px;
+  background: var(--bg);
+}

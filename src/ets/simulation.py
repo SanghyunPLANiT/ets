@@ -11,6 +11,7 @@ from .expectations import (
     expectation_sort_key,
 )
 from .market import CarbonMarket
+from .msr import MSRState
 from .scenarios import build_markets_from_config, load_config
 
 
@@ -63,14 +64,16 @@ def solve_scenario_path(
             if max_delta <= tolerance:
                 break
 
-    return _simulate_path_details(ordered_markets, expected_prices)
+    msr_state = MSRState() if getattr(ordered_markets[0], "msr_enabled", False) else None
+    return _simulate_path_details(ordered_markets, expected_prices, msr_state=msr_state)
 
 
 def _simulate_realized_prices(
     ordered_markets: list[CarbonMarket],
     expected_prices: dict[str, float],
 ) -> dict[str, float]:
-    details = _simulate_path_details(ordered_markets, expected_prices)
+    # MSR is NOT applied in the inner convergence loop (prices only)
+    details = _simulate_path_details(ordered_markets, expected_prices, msr_state=None)
     return {
         str(item["market"].year): float(item["equilibrium"]["price"])
         for item in details
@@ -80,6 +83,7 @@ def _simulate_realized_prices(
 def _simulate_path_details(
     ordered_markets: list[CarbonMarket],
     expected_prices: dict[str, float],
+    msr_state: MSRState | None = None,
 ) -> list[dict]:
     bank_balances = {
         participant.name: 0.0 for participant in ordered_markets[0].participants
@@ -90,10 +94,36 @@ def _simulate_path_details(
     for market in ordered_markets:
         expected_future_price = float(expected_prices.get(str(market.year), 0.0))
         starting_bank_balances = dict(bank_balances)
+
+        # ── MSR: adjust auction supply before clearing ────────────────────
+        msr_withheld = 0.0
+        msr_released = 0.0
+        msr_pool = 0.0
+        effective_carry = carry_forward_allowances
+
+        if msr_state is not None and getattr(market, "msr_enabled", False):
+            total_bank = sum(bank_balances.values())
+            adj_auction, msr_withheld, msr_released = msr_state.apply(
+                total_bank=total_bank,
+                auction_offered=market.auction_offered,
+                upper_threshold=float(getattr(market, "msr_upper_threshold", 200.0)),
+                lower_threshold=float(getattr(market, "msr_lower_threshold", 50.0)),
+                withhold_rate=float(getattr(market, "msr_withhold_rate", 0.12)),
+                release_rate=float(getattr(market, "msr_release_rate", 50.0)),
+                cancel_excess=bool(getattr(market, "msr_cancel_excess", False)),
+                cancel_threshold=float(getattr(market, "msr_cancel_threshold", 400.0)),
+                year_label=str(market.year),
+            )
+            msr_pool = msr_state.reserve_pool
+            # Inject MSR adjustment as carry-forward so solve_equilibrium sees it
+            # (net: released adds to supply; withheld is already subtracted via adj_auction)
+            msr_net = msr_released - msr_withheld
+            effective_carry = carry_forward_allowances + msr_net
+
         equilibrium = market.solve_equilibrium(
             bank_balances=bank_balances,
             expected_future_price=expected_future_price,
-            carry_forward_in=carry_forward_allowances,
+            carry_forward_in=effective_carry,
         )
         equilibrium_price = float(equilibrium["price"])
         participant_df = market.participant_results(
@@ -108,6 +138,9 @@ def _simulate_path_details(
                 "starting_bank_balances": starting_bank_balances,
                 "equilibrium": equilibrium,
                 "participant_df": participant_df,
+                "msr_withheld": msr_withheld,
+                "msr_released": msr_released,
+                "msr_pool": msr_pool,
             }
         )
         carry_forward_allowances = (
@@ -136,14 +169,17 @@ def _collect_path_results(
         equilibrium = item["equilibrium"]
         equilibrium_price = float(equilibrium["price"])
         participant_df = item["participant_df"]
-        scenario_summaries.append(
-            market.scenario_summary(
-                equilibrium_price,
-                expected_future_price=expected_future_price,
-                auction_outcome=equilibrium,
-                participant_df=participant_df,
-            )
+        summary = market.scenario_summary(
+            equilibrium_price,
+            expected_future_price=expected_future_price,
+            auction_outcome=equilibrium,
+            participant_df=participant_df,
         )
+        # Patch in MSR stats from the simulation step
+        summary["MSR Withheld"] = float(item.get("msr_withheld", 0.0))
+        summary["MSR Released"] = float(item.get("msr_released", 0.0))
+        summary["MSR Reserve Pool"] = float(item.get("msr_pool", 0.0))
+        scenario_summaries.append(summary)
         participant_frames.append(participant_df)
 
 
@@ -215,7 +251,7 @@ def run_simulation(markets: list[CarbonMarket]) -> tuple[pd.DataFrame, pd.DataFr
                 _collect_path_results(mkt_list, path, scenario_summaries, participant_frames)
 
         else:
-            # Default: competitive
+            # Default: competitive (MSR handled inside solve_scenario_path)
             path = solve_scenario_path(ordered_markets)
             _collect_path_results(ordered_markets, path, scenario_summaries, participant_frames)
 
