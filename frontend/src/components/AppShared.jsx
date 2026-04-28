@@ -44,6 +44,8 @@ function makeBlankParticipant(index = 1) {
     mac_blocks: [],
     cbam_export_share: 0,
     cbam_coverage_ratio: 1,
+    cbam_jurisdictions: [],
+    sector_group: "",
   };
 }
 
@@ -67,6 +69,8 @@ function makeBlankYear(label = "2030") {
     manual_expected_price: 0,
     carbon_budget: 0,
     eua_price: 0,
+    eua_prices: {},
+    eua_price_ensemble: {},
     participants: [],
   };
 }
@@ -81,6 +85,7 @@ function makeBlankScenario(index = 1) {
     discount_rate: 0.04,
     risk_premium: 0.0,
     nash_strategic_participants: [],
+    free_allocation_trajectories: [],
     // ── Solver settings (user-overridable, defaults match backend) ──────────
     solver_competitive_max_iters: 25,
     solver_competitive_tolerance: 0.001,

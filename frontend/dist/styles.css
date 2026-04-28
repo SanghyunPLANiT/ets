@@ -2483,3 +2483,112 @@ html[data-chart="terminal"][data-theme="light"] { --panel: #fafaf7; --bg: #eeede
   padding: 10px 12px 14px;
   background: var(--bg);
 }
+
+/* ── CBAM Jurisdiction Table ─────────────────────────────────────────────── */
+.cbam-jur-section {
+  margin: 12px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.cbam-jur-head {
+  padding: 8px 12px 6px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cbam-jur-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.cbam-jur-row {
+  display: grid;
+  grid-template-columns: 1fr 90px 90px 36px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.cbam-jur-row:last-child { border-bottom: none; }
+.cbam-jur-row input { width: 100%; }
+
+/* ── EUA Prices / Ensemble Key-Value ─────────────────────────────────────── */
+.eua-prices-panel {
+  margin: 12px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.eua-prices-head {
+  padding: 8px 12px 6px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.eua-prices-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.eua-prices-row {
+  display: grid;
+  grid-template-columns: 1fr 110px 36px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.eua-prices-row:last-child { border-bottom: none; }
+.eua-prices-row input { width: 100%; }
+
+/* ── Free-Allocation Trajectory Table ───────────────────────────────────── */
+.traj-section {
+  margin: 12px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.traj-head {
+  padding: 8px 12px 6px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.traj-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.traj-row {
+  display: grid;
+  grid-template-columns: 1.4fr 80px 80px 70px 70px 36px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.traj-row:last-child { border-bottom: none; }
+.traj-row input { width: 100%; }
+@media (max-width: 700px) {
+  .cbam-jur-row { grid-template-columns: 1fr 80px 36px; }
+  .traj-row { grid-template-columns: 1fr 70px 70px 36px; }
+}

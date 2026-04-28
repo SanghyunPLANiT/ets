@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Union
 
 import numpy as np
@@ -92,9 +92,14 @@ class MarketParticipant:
     penalty_price: float
     max_abatement_share: float = 1.0
     technology_options: list[TechnologyOption] | None = None
-    # CBAM exposure — fraction of output subject to EU carbon border adjustment
+    # CBAM exposure — single-jurisdiction shorthand (EU)
     cbam_export_share: float = 0.0    # share of activity exported to CBAM-covered markets (0–1)
     cbam_coverage_ratio: float = 1.0  # fraction of embedded emissions covered by CBAM (0–1)
+    # Multi-jurisdiction CBAM — list of {name, export_share, coverage_ratio}
+    # If non-empty, overrides the single-jurisdiction fields above for CBAM calculation.
+    cbam_jurisdictions: list = field(default_factory=list)
+    # Sector classification for grouped reporting (e.g. "Steel", "Petrochemical")
+    sector_group: str = ""
 
     def __post_init__(self) -> None:
         self._validate_state(

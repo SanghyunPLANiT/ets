@@ -55,7 +55,9 @@ class CarbonMarket:
         self.manual_expected_price = float(manual_expected_price)
         self.penalty_price_multiplier = float(penalty_price_multiplier)
         # CBAM / MSR — set post-construction via scenarios.py
-        self.eua_price: float = 0.0          # external EUA reference price this year
+        self.eua_price: float = 0.0          # external EUA reference price (EU default)
+        self.eua_prices: dict = {}           # per-jurisdiction prices e.g. {"EU": 65, "UK": 50}
+        self.eua_price_ensemble: dict = {}   # named EUA trajectories e.g. {"EC": 65, "Enerdata": 70}
 
         free_allocations = sum(participant.free_allocation for participant in participants)
         allowance_supply = (
@@ -292,20 +294,65 @@ class CarbonMarket:
             )
             # ── CBAM liability ──────────────────────────────────────────────
             eua_price = float(getattr(self, "eua_price", 0.0) or 0.0)
+            eua_prices = dict(getattr(self, "eua_prices", {}) or {})
+            eua_price_ensemble = dict(getattr(self, "eua_price_ensemble", {}) or {})
             kau_price = float(equilibrium_price)
-            cbam_gap = max(0.0, eua_price - kau_price)
-            cbam_export_share = float(getattr(participant, "cbam_export_share", 0.0) or 0.0)
-            cbam_coverage = float(getattr(participant, "cbam_coverage_ratio", 1.0) or 1.0)
-            # Liability on CBAM-exposed residual emissions
-            cbam_liable_emissions = (
-                outcome.residual_emissions * cbam_export_share * cbam_coverage
-            )
-            cbam_liability = cbam_gap * cbam_liable_emissions
+
+            # Multi-jurisdiction CBAM —  if cbam_jurisdictions is non-empty, compute
+            # per-jurisdiction liabilities and sum; otherwise fall back to single fields.
+            jurisdictions = list(getattr(participant, "cbam_jurisdictions", None) or [])
+            if jurisdictions:
+                cbam_gap = 0.0  # aggregate gap (weighted, for display)
+                cbam_export_share = 0.0
+                cbam_liable_emissions = 0.0
+                cbam_liability = 0.0
+                jur_records: dict = {}
+                for jur in jurisdictions:
+                    jname   = str(jur.get("name", ""))
+                    jshare  = float(jur.get("export_share", 0.0) or 0.0)
+                    jcov    = float(jur.get("coverage_ratio", 1.0) or 1.0)
+                    # Reference price: jurisdiction-specific override > eua_prices dict > eua_price (EU)
+                    jref    = float(jur.get("reference_price") or eua_prices.get(jname) or eua_price or 0.0)
+                    jgap    = max(0.0, jref - kau_price)
+                    jliable = outcome.residual_emissions * jshare * jcov
+                    jliab   = jgap * jliable
+                    cbam_export_share   += jshare
+                    cbam_liable_emissions += jliable
+                    cbam_liability      += jliab
+                    jur_records[f"CBAM Liability ({jname})"] = jliab
+                    jur_records[f"CBAM Gap ({jname})"]       = jgap
+                cbam_gap = (cbam_liability / cbam_liable_emissions) if cbam_liable_emissions > 0 else 0.0
+            else:
+                cbam_gap          = max(0.0, eua_price - kau_price)
+                cbam_export_share = float(getattr(participant, "cbam_export_share", 0.0) or 0.0)
+                cbam_coverage     = float(getattr(participant, "cbam_coverage_ratio", 1.0) or 1.0)
+                cbam_liable_emissions = outcome.residual_emissions * cbam_export_share * cbam_coverage
+                cbam_liability    = cbam_gap * cbam_liable_emissions
+                jur_records       = {}
+
             total_cost_incl_cbam = outcome.total_cost + cbam_liability
+
+            # EUA ensemble — compute CBAM liability under each named EUA trajectory
+            ensemble_records: dict = {}
+            for ename, eprice in eua_price_ensemble.items():
+                egap = max(0.0, float(eprice) - kau_price)
+                if jurisdictions:
+                    eliab = sum(
+                        egap * outcome.residual_emissions
+                        * float(j.get("export_share", 0.0))
+                        * float(j.get("coverage_ratio", 1.0))
+                        for j in jurisdictions
+                    )
+                else:
+                    eliab = egap * outcome.residual_emissions * cbam_export_share * float(
+                        getattr(participant, "cbam_coverage_ratio", 1.0) or 1.0
+                    )
+                ensemble_records[f"CBAM Liability ({ename})"] = eliab
 
             record: Dict[str, float | str] = {
                 "Scenario": self.scenario_name,
                 "Participant": participant.name,
+                "Sector Group": str(getattr(participant, "sector_group", "") or ""),
                 "Chosen Technology": outcome.technology_name,
                 "Technology Mix": "; ".join(
                     f"{name}:{share:.4f}" for name, share in outcome.technology_mix
@@ -335,6 +382,8 @@ class CarbonMarket:
                 "CBAM Liable Emissions": cbam_liable_emissions,
                 "CBAM Liability": cbam_liability,
                 "Total Cost incl. CBAM": total_cost_incl_cbam,
+                **jur_records,
+                **ensemble_records,
             }
             if self.year is not None:
                 record["Year"] = self.year
@@ -407,6 +456,26 @@ class CarbonMarket:
         }
         if self.year is not None:
             summary["Year"] = self.year
+
+        # ── Per-jurisdiction CBAM totals ─────────────────────────────────────
+        for col in participant_df.columns:
+            if col.startswith("CBAM Liability (") or col.startswith("CBAM Gap ("):
+                summary[f"Total {col}"] = float(participant_df[col].sum())
+
+        # ── EUA ensemble totals ──────────────────────────────────────────────
+        for col in participant_df.columns:
+            if col.startswith("CBAM Liability (") and col not in summary:
+                summary[f"Total {col}"] = float(participant_df[col].sum())
+
+        # ── Sector-group aggregates ──────────────────────────────────────────
+        if "Sector Group" in participant_df.columns:
+            for sg, grp in participant_df.groupby("Sector Group"):
+                if not sg:
+                    continue
+                summary[f"{sg} Total Abatement"]      = float(grp["Abatement"].sum())
+                summary[f"{sg} Total Compliance Cost"] = float(grp["Total Compliance Cost"].sum())
+                summary[f"{sg} Total CBAM Liability"]  = float(grp["CBAM Liability"].sum())
+
         for _, row in participant_df.iterrows():
             participant_name = str(row["Participant"])
             summary[f"{participant_name} Technology"] = str(row["Chosen Technology"])

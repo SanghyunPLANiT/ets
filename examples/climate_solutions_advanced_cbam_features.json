@@ -1,10 +1,26 @@
 {
-  "_description": "CBAM (Carbon Border Adjustment Mechanism) exposure example. Two scenarios share an identical K-ETS market structure — tightening cap, free-allocation phase-out, rising EUA reference price — but differ only in whether participants export to CBAM-covered markets. In 'No CBAM Exposure' all cbam_export_share values are zero, so no additional liability appears. In 'With CBAM Exposure' the Steel sector exports 40 % of its output to the EU and Petrochemical exports 30 %, creating a growing CBAM liability as the EUA–KAU gap widens. Compare the 'CBAM Liability' and 'Total Cost incl. CBAM' columns to quantify the cross-border carbon cost burden on each sector.",
+  "_description": "Advanced CBAM features demo. Showcases four extensions added in the research model update: (1) free_allocation_trajectories at scenario level so per-year ratios are auto-interpolated; (2) cbam_jurisdictions per participant for multi-market CBAM exposure (EU + UK); (3) eua_prices dict per year providing reference carbon prices for each CBAM jurisdiction; (4) eua_price_ensemble per year for fan-chart / sensitivity analysis across EC, Enerdata, and BNEF forecasts. Two scenarios: 'Trajectory Auto' uses free_allocation_trajectories to drive Steel from 90% → 50% and Petrochemical from 70% → 50% without repeating per-year ratios; 'Trajectory Manual' sets the same ratios explicitly per year as a cross-check. Both scenarios share identical CBAM and ensemble settings.",
   "scenarios": [
     {
-      "name": "No CBAM Exposure",
+      "name": "Trajectory Auto",
       "model_approach": "competitive",
       "msr_enabled": false,
+      "free_allocation_trajectories": [
+        {
+          "participant_name": "Steel",
+          "start_year": "2026",
+          "end_year": "2030",
+          "start_ratio": 0.9,
+          "end_ratio": 0.5
+        },
+        {
+          "participant_name": "Petrochemical",
+          "start_year": "2026",
+          "end_year": "2030",
+          "start_ratio": 0.7,
+          "end_ratio": 0.5
+        }
+      ],
       "years": [
         {
           "year": "2026",
@@ -25,9 +41,12 @@
           "manual_expected_price": 0.0,
           "carbon_budget": 0.0,
           "eua_price": 65.0,
+          "eua_prices": { "EU": 65.0, "UK": 52.0 },
+          "eua_price_ensemble": { "EC": 63.0, "Enerdata": 68.0, "BNEF": 71.0 },
           "participants": [
             {
               "name": "Steel",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 160.0,
               "free_allocation_ratio": 0.9,
               "penalty_price": 150.0,
@@ -43,10 +62,15 @@
                 {"amount": 5.0, "mc": 130.0}
               ],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.35, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.08, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Petrochemical",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 80.0,
               "free_allocation_ratio": 0.7,
               "penalty_price": 150.0,
@@ -61,10 +85,15 @@
                 {"amount": 4.0, "mc": 110.0}
               ],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.28, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.05, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Power",
+              "sector_group": "Utilities",
               "initial_emissions": 140.0,
               "free_allocation_ratio": 0.0,
               "penalty_price": 150.0,
@@ -74,7 +103,8 @@
               "threshold_cost": 0.0,
               "mac_blocks": [],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": []
             }
           ]
         },
@@ -97,11 +127,14 @@
           "manual_expected_price": 0.0,
           "carbon_budget": 0.0,
           "eua_price": 68.0,
+          "eua_prices": { "EU": 68.0, "UK": 55.0 },
+          "eua_price_ensemble": { "EC": 66.0, "Enerdata": 72.0, "BNEF": 76.0 },
           "participants": [
             {
               "name": "Steel",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 157.0,
-              "free_allocation_ratio": 0.8,
+              "free_allocation_ratio": 0.9,
               "penalty_price": 150.0,
               "abatement_type": "piecewise",
               "max_abatement": 0.0,
@@ -115,12 +148,17 @@
                 {"amount": 5.0, "mc": 130.0}
               ],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.35, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.08, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Petrochemical",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 78.0,
-              "free_allocation_ratio": 0.65,
+              "free_allocation_ratio": 0.7,
               "penalty_price": 150.0,
               "abatement_type": "piecewise",
               "max_abatement": 0.0,
@@ -133,10 +171,15 @@
                 {"amount": 4.0, "mc": 110.0}
               ],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.28, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.05, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Power",
+              "sector_group": "Utilities",
               "initial_emissions": 135.0,
               "free_allocation_ratio": 0.0,
               "penalty_price": 150.0,
@@ -146,7 +189,8 @@
               "threshold_cost": 0.0,
               "mac_blocks": [],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": []
             }
           ]
         },
@@ -169,11 +213,14 @@
           "manual_expected_price": 0.0,
           "carbon_budget": 0.0,
           "eua_price": 72.0,
+          "eua_prices": { "EU": 72.0, "UK": 59.0 },
+          "eua_price_ensemble": { "EC": 70.0, "Enerdata": 76.0, "BNEF": 82.0 },
           "participants": [
             {
               "name": "Steel",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 154.0,
-              "free_allocation_ratio": 0.7,
+              "free_allocation_ratio": 0.9,
               "penalty_price": 150.0,
               "abatement_type": "piecewise",
               "max_abatement": 0.0,
@@ -187,12 +234,17 @@
                 {"amount": 5.0, "mc": 130.0}
               ],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.35, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.08, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Petrochemical",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 76.0,
-              "free_allocation_ratio": 0.6,
+              "free_allocation_ratio": 0.7,
               "penalty_price": 150.0,
               "abatement_type": "piecewise",
               "max_abatement": 0.0,
@@ -205,10 +257,15 @@
                 {"amount": 4.0, "mc": 110.0}
               ],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.28, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.05, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Power",
+              "sector_group": "Utilities",
               "initial_emissions": 130.0,
               "free_allocation_ratio": 0.0,
               "penalty_price": 150.0,
@@ -218,7 +275,8 @@
               "threshold_cost": 0.0,
               "mac_blocks": [],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": []
             }
           ]
         },
@@ -241,11 +299,14 @@
           "manual_expected_price": 0.0,
           "carbon_budget": 0.0,
           "eua_price": 78.0,
+          "eua_prices": { "EU": 78.0, "UK": 64.0 },
+          "eua_price_ensemble": { "EC": 75.0, "Enerdata": 81.0, "BNEF": 90.0 },
           "participants": [
             {
               "name": "Steel",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 151.0,
-              "free_allocation_ratio": 0.6,
+              "free_allocation_ratio": 0.9,
               "penalty_price": 150.0,
               "abatement_type": "piecewise",
               "max_abatement": 0.0,
@@ -259,12 +320,17 @@
                 {"amount": 5.0, "mc": 130.0}
               ],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.35, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.08, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Petrochemical",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 74.0,
-              "free_allocation_ratio": 0.55,
+              "free_allocation_ratio": 0.7,
               "penalty_price": 150.0,
               "abatement_type": "piecewise",
               "max_abatement": 0.0,
@@ -277,10 +343,15 @@
                 {"amount": 4.0, "mc": 110.0}
               ],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.28, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.05, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Power",
+              "sector_group": "Utilities",
               "initial_emissions": 125.0,
               "free_allocation_ratio": 0.0,
               "penalty_price": 150.0,
@@ -290,7 +361,8 @@
               "threshold_cost": 0.0,
               "mac_blocks": [],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": []
             }
           ]
         },
@@ -313,11 +385,14 @@
           "manual_expected_price": 0.0,
           "carbon_budget": 0.0,
           "eua_price": 85.0,
+          "eua_prices": { "EU": 85.0, "UK": 70.0 },
+          "eua_price_ensemble": { "EC": 80.0, "Enerdata": 88.0, "BNEF": 100.0 },
           "participants": [
             {
               "name": "Steel",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 148.0,
-              "free_allocation_ratio": 0.5,
+              "free_allocation_ratio": 0.9,
               "penalty_price": 150.0,
               "abatement_type": "piecewise",
               "max_abatement": 0.0,
@@ -331,12 +406,17 @@
                 {"amount": 5.0, "mc": 130.0}
               ],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.35, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.08, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Petrochemical",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 72.0,
-              "free_allocation_ratio": 0.5,
+              "free_allocation_ratio": 0.7,
               "penalty_price": 150.0,
               "abatement_type": "piecewise",
               "max_abatement": 0.0,
@@ -349,10 +429,15 @@
                 {"amount": 4.0, "mc": 110.0}
               ],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.28, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.05, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Power",
+              "sector_group": "Utilities",
               "initial_emissions": 120.0,
               "free_allocation_ratio": 0.0,
               "penalty_price": 150.0,
@@ -362,16 +447,18 @@
               "threshold_cost": 0.0,
               "mac_blocks": [],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": []
             }
           ]
         }
       ]
     },
     {
-      "name": "With CBAM Exposure",
+      "name": "Trajectory Manual",
       "model_approach": "competitive",
       "msr_enabled": false,
+      "free_allocation_trajectories": [],
       "years": [
         {
           "year": "2026",
@@ -392,9 +479,12 @@
           "manual_expected_price": 0.0,
           "carbon_budget": 0.0,
           "eua_price": 65.0,
+          "eua_prices": { "EU": 65.0, "UK": 52.0 },
+          "eua_price_ensemble": { "EC": 63.0, "Enerdata": 68.0, "BNEF": 71.0 },
           "participants": [
             {
               "name": "Steel",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 160.0,
               "free_allocation_ratio": 0.9,
               "penalty_price": 150.0,
@@ -409,11 +499,16 @@
                 {"amount": 8.0, "mc": 90.0},
                 {"amount": 5.0, "mc": 130.0}
               ],
-              "cbam_export_share": 0.4,
-              "cbam_coverage_ratio": 1.0
+              "cbam_export_share": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.35, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.08, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Petrochemical",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 80.0,
               "free_allocation_ratio": 0.7,
               "penalty_price": 150.0,
@@ -427,11 +522,16 @@
                 {"amount": 6.0, "mc": 75.0},
                 {"amount": 4.0, "mc": 110.0}
               ],
-              "cbam_export_share": 0.3,
-              "cbam_coverage_ratio": 1.0
+              "cbam_export_share": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.28, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.05, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Power",
+              "sector_group": "Utilities",
               "initial_emissions": 140.0,
               "free_allocation_ratio": 0.0,
               "penalty_price": 150.0,
@@ -441,7 +541,8 @@
               "threshold_cost": 0.0,
               "mac_blocks": [],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": []
             }
           ]
         },
@@ -464,9 +565,12 @@
           "manual_expected_price": 0.0,
           "carbon_budget": 0.0,
           "eua_price": 68.0,
+          "eua_prices": { "EU": 68.0, "UK": 55.0 },
+          "eua_price_ensemble": { "EC": 66.0, "Enerdata": 72.0, "BNEF": 76.0 },
           "participants": [
             {
               "name": "Steel",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 157.0,
               "free_allocation_ratio": 0.8,
               "penalty_price": 150.0,
@@ -481,11 +585,16 @@
                 {"amount": 8.0, "mc": 90.0},
                 {"amount": 5.0, "mc": 130.0}
               ],
-              "cbam_export_share": 0.4,
-              "cbam_coverage_ratio": 1.0
+              "cbam_export_share": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.35, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.08, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Petrochemical",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 78.0,
               "free_allocation_ratio": 0.65,
               "penalty_price": 150.0,
@@ -499,11 +608,16 @@
                 {"amount": 6.0, "mc": 75.0},
                 {"amount": 4.0, "mc": 110.0}
               ],
-              "cbam_export_share": 0.3,
-              "cbam_coverage_ratio": 1.0
+              "cbam_export_share": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.28, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.05, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Power",
+              "sector_group": "Utilities",
               "initial_emissions": 135.0,
               "free_allocation_ratio": 0.0,
               "penalty_price": 150.0,
@@ -513,7 +627,8 @@
               "threshold_cost": 0.0,
               "mac_blocks": [],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": []
             }
           ]
         },
@@ -536,9 +651,12 @@
           "manual_expected_price": 0.0,
           "carbon_budget": 0.0,
           "eua_price": 72.0,
+          "eua_prices": { "EU": 72.0, "UK": 59.0 },
+          "eua_price_ensemble": { "EC": 70.0, "Enerdata": 76.0, "BNEF": 82.0 },
           "participants": [
             {
               "name": "Steel",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 154.0,
               "free_allocation_ratio": 0.7,
               "penalty_price": 150.0,
@@ -553,11 +671,16 @@
                 {"amount": 8.0, "mc": 90.0},
                 {"amount": 5.0, "mc": 130.0}
               ],
-              "cbam_export_share": 0.4,
-              "cbam_coverage_ratio": 1.0
+              "cbam_export_share": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.35, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.08, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Petrochemical",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 76.0,
               "free_allocation_ratio": 0.6,
               "penalty_price": 150.0,
@@ -571,11 +694,16 @@
                 {"amount": 6.0, "mc": 75.0},
                 {"amount": 4.0, "mc": 110.0}
               ],
-              "cbam_export_share": 0.3,
-              "cbam_coverage_ratio": 1.0
+              "cbam_export_share": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.28, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.05, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Power",
+              "sector_group": "Utilities",
               "initial_emissions": 130.0,
               "free_allocation_ratio": 0.0,
               "penalty_price": 150.0,
@@ -585,7 +713,8 @@
               "threshold_cost": 0.0,
               "mac_blocks": [],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": []
             }
           ]
         },
@@ -608,9 +737,12 @@
           "manual_expected_price": 0.0,
           "carbon_budget": 0.0,
           "eua_price": 78.0,
+          "eua_prices": { "EU": 78.0, "UK": 64.0 },
+          "eua_price_ensemble": { "EC": 75.0, "Enerdata": 81.0, "BNEF": 90.0 },
           "participants": [
             {
               "name": "Steel",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 151.0,
               "free_allocation_ratio": 0.6,
               "penalty_price": 150.0,
@@ -625,11 +757,16 @@
                 {"amount": 8.0, "mc": 90.0},
                 {"amount": 5.0, "mc": 130.0}
               ],
-              "cbam_export_share": 0.4,
-              "cbam_coverage_ratio": 1.0
+              "cbam_export_share": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.35, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.08, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Petrochemical",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 74.0,
               "free_allocation_ratio": 0.55,
               "penalty_price": 150.0,
@@ -643,11 +780,16 @@
                 {"amount": 6.0, "mc": 75.0},
                 {"amount": 4.0, "mc": 110.0}
               ],
-              "cbam_export_share": 0.3,
-              "cbam_coverage_ratio": 1.0
+              "cbam_export_share": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.28, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.05, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Power",
+              "sector_group": "Utilities",
               "initial_emissions": 125.0,
               "free_allocation_ratio": 0.0,
               "penalty_price": 150.0,
@@ -657,7 +799,8 @@
               "threshold_cost": 0.0,
               "mac_blocks": [],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": []
             }
           ]
         },
@@ -680,9 +823,12 @@
           "manual_expected_price": 0.0,
           "carbon_budget": 0.0,
           "eua_price": 85.0,
+          "eua_prices": { "EU": 85.0, "UK": 70.0 },
+          "eua_price_ensemble": { "EC": 80.0, "Enerdata": 88.0, "BNEF": 100.0 },
           "participants": [
             {
               "name": "Steel",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 148.0,
               "free_allocation_ratio": 0.5,
               "penalty_price": 150.0,
@@ -697,11 +843,16 @@
                 {"amount": 8.0, "mc": 90.0},
                 {"amount": 5.0, "mc": 130.0}
               ],
-              "cbam_export_share": 0.4,
-              "cbam_coverage_ratio": 1.0
+              "cbam_export_share": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.35, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.08, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Petrochemical",
+              "sector_group": "Heavy Industry",
               "initial_emissions": 72.0,
               "free_allocation_ratio": 0.5,
               "penalty_price": 150.0,
@@ -715,11 +866,16 @@
                 {"amount": 6.0, "mc": 75.0},
                 {"amount": 4.0, "mc": 110.0}
               ],
-              "cbam_export_share": 0.3,
-              "cbam_coverage_ratio": 1.0
+              "cbam_export_share": 0.0,
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": [
+                {"name": "EU", "export_share": 0.28, "coverage_ratio": 1.0},
+                {"name": "UK", "export_share": 0.05, "coverage_ratio": 1.0}
+              ]
             },
             {
               "name": "Power",
+              "sector_group": "Utilities",
               "initial_emissions": 120.0,
               "free_allocation_ratio": 0.0,
               "penalty_price": 150.0,
@@ -729,7 +885,8 @@
               "threshold_cost": 0.0,
               "mac_blocks": [],
               "cbam_export_share": 0.0,
-              "cbam_coverage_ratio": 1.0
+              "cbam_coverage_ratio": 1.0,
+              "cbam_jurisdictions": []
             }
           ]
         }

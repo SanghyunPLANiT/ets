@@ -27,6 +27,9 @@ def blank_scenario() -> dict[str, Any]:
         "discount_rate": 0.04,
         "risk_premium": 0.0,
         "nash_strategic_participants": [],
+        # ── Free-allocation phase-out trajectories ───────────────────────────
+        # List of {participant_name, start_year, end_year, start_ratio, end_ratio}
+        "free_allocation_trajectories": [],
         # ── MSR settings ────────────────────────────────────────────────────
         **MSR_DEFAULTS,
         # ── Solver / model settings (all user-overridable) ──────────────────
@@ -67,6 +70,8 @@ def blank_year_config() -> dict[str, Any]:
         "expectation_rule": "next_year_baseline",
         "manual_expected_price": 0.0,
         "eua_price": 0.0,
+        "eua_prices": {},           # per-jurisdiction: {"EU": 65, "UK": 50}
+        "eua_price_ensemble": {},   # named trajectories: {"EC": 65, "Enerdata": 70, "BNEF": 80}
         "participants": [],
     }
 
@@ -85,6 +90,8 @@ def blank_participant() -> dict[str, Any]:
         "technology_options": [],
         "cbam_export_share": 0.0,
         "cbam_coverage_ratio": 1.0,
+        "cbam_jurisdictions": [],   # [{name, export_share, coverage_ratio}] overrides single fields
+        "sector_group": "",
     }
 
 
@@ -169,6 +176,7 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         "solver_nash_max_iters": int(_fval("solver_nash_max_iters", 120)),
         "solver_nash_convergence_tol": _fval("solver_nash_convergence_tol", 0.001),
         "solver_penalty_price_multiplier": _fval("solver_penalty_price_multiplier", 1.25),
+        "free_allocation_trajectories": list(scenario.get("free_allocation_trajectories") or []),
         "years": scenario["years"],
     }
 
@@ -229,6 +237,11 @@ def normalize_year(raw_year: dict[str, Any]) -> dict[str, Any]:
     )
     year_config["carbon_budget"] = float(year_config.get("carbon_budget") or 0.0)
     year_config["eua_price"] = float(year_config.get("eua_price") or 0.0)
+    # Per-jurisdiction and ensemble EUA prices — keep as dicts, just ensure float values
+    raw_eua_prices = year_config.get("eua_prices") or {}
+    year_config["eua_prices"] = {k: float(v or 0.0) for k, v in raw_eua_prices.items()} if isinstance(raw_eua_prices, dict) else {}
+    raw_ensemble = year_config.get("eua_price_ensemble") or {}
+    year_config["eua_price_ensemble"] = {k: float(v or 0.0) for k, v in raw_ensemble.items()} if isinstance(raw_ensemble, dict) else {}
 
     if year_config["auction_mode"] not in ALLOWED_AUCTION_MODES:
         raise ValueError(
@@ -301,6 +314,19 @@ def normalize_participant(raw_participant: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(
             f"Participant '{participant['name']}' cbam_coverage_ratio must be between 0 and 1."
         )
+    # Multi-jurisdiction CBAM
+    raw_jurs = participant.get("cbam_jurisdictions") or []
+    participant["cbam_jurisdictions"] = [
+        {
+            "name": str(j.get("name", "")),
+            "export_share": float(j.get("export_share", 0.0) or 0.0),
+            "coverage_ratio": float(j.get("coverage_ratio", 1.0) or 1.0),
+            **( {"reference_price": float(j["reference_price"])} if j.get("reference_price") is not None else {} ),
+        }
+        for j in raw_jurs
+        if isinstance(j, dict)
+    ]
+    participant["sector_group"] = str(participant.get("sector_group") or "")
     technology_options = participant.get("technology_options", [])
     if not isinstance(technology_options, list):
         raise ValueError(
@@ -425,6 +451,7 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
             "discount_rate": scenario.get("discount_rate", 0.04),
             "risk_premium": scenario.get("risk_premium", 0.0),
             "nash_strategic_participants": scenario.get("nash_strategic_participants", []),
+            "free_allocation_trajectories": scenario.get("free_allocation_trajectories", []),
             # MSR
             "msr_enabled": scenario.get("msr_enabled", False),
             "msr_upper_threshold": scenario.get("msr_upper_threshold", 200.0),
@@ -448,12 +475,55 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
     return markets
 
 
+def _interp_ratio(year_num: float, traj: dict) -> float | None:
+    """Return linearly interpolated free_allocation_ratio for a trajectory, or None."""
+    t_start = _year_to_float(str(traj.get("start_year", "")))
+    t_end   = _year_to_float(str(traj.get("end_year", "")))
+    r_start = float(traj.get("start_ratio", 0.0) or 0.0)
+    r_end   = float(traj.get("end_ratio",   0.0) or 0.0)
+    if t_end <= t_start:
+        return None
+    if year_num <= t_start:
+        return r_start
+    if year_num >= t_end:
+        return r_end
+    frac = (year_num - t_start) / (t_end - t_start)
+    return round(r_start + frac * (r_end - r_start), 6)
+
+
+def _year_to_float(year_label: str) -> float:
+    try:
+        return float(year_label)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def build_market_from_year(
     scenario_name: str,
     year_config: dict[str, Any],
     scenario_meta: dict[str, Any] | None = None,
 ) -> CarbonMarket:
+    meta = scenario_meta or {}
+    year_num = _year_to_float(str(year_config.get("year", "2030")))
+    trajectories = list(meta.get("free_allocation_trajectories") or [])
+
     participants = [build_participant(item) for item in year_config["participants"]]
+
+    # Apply free-allocation phase-out trajectories — override per-participant ratio
+    if trajectories:
+        updated: list = []
+        for p in participants:
+            override = None
+            for traj in trajectories:
+                if str(traj.get("participant_name", "")) == p.name:
+                    override = _interp_ratio(year_num, traj)
+                    break
+            if override is not None:
+                import dataclasses as _dc
+                p = _dc.replace(p, free_allocation_ratio=min(1.0, max(0.0, override)))
+            updated.append(p)
+        participants = updated
+
     free_allocations = sum(participant.free_allocation for participant in participants)
     reserved_allowances = float(year_config.get("reserved_allowances", 0.0))
     cancelled_allowances = float(year_config.get("cancelled_allowances", 0.0))
@@ -474,7 +544,6 @@ def build_market_from_year(
             "auction offered. Raise the cap or lower free allocation."
         )
 
-    meta = scenario_meta or {}
     market = CarbonMarket(
         participants=participants,
         total_cap=year_config["total_cap"],
@@ -502,6 +571,8 @@ def build_market_from_year(
     market.nash_strategic_participants = list(meta.get("nash_strategic_participants") or [])
     market.carbon_budget = float(year_config.get("carbon_budget") or 0.0)
     market.eua_price = float(year_config.get("eua_price") or 0.0)
+    market.eua_prices = dict(year_config.get("eua_prices") or {})
+    market.eua_price_ensemble = dict(year_config.get("eua_price_ensemble") or {})
     # Attach MSR settings
     market.msr_enabled = bool(meta.get("msr_enabled", False))
     market.msr_upper_threshold = float(meta.get("msr_upper_threshold") or 200.0)
@@ -562,6 +633,8 @@ def build_participant(participant: dict[str, Any]) -> MarketParticipant:
         technology_options=technology_options or None,
         cbam_export_share=float(participant.get("cbam_export_share") or 0.0),
         cbam_coverage_ratio=float(participant.get("cbam_coverage_ratio") or 1.0),
+        cbam_jurisdictions=list(participant.get("cbam_jurisdictions") or []),
+        sector_group=str(participant.get("sector_group") or ""),
     )
 
 
