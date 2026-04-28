@@ -152,6 +152,23 @@ def solve_hotelling_path(
     if not ordered_markets:
         return []
 
+    # ── Validate carbon_budget ─────────────────────────────────────────────
+    # Hotelling requires a cumulative carbon budget to bisect on.
+    # Warn loudly if every year's carbon_budget is zero (common config mistake).
+    total_explicit_budget = sum(
+        float(getattr(m, "carbon_budget", 0.0) or 0.0) for m in ordered_markets
+    )
+    total_cap_sum = sum(float(m.total_cap) for m in ordered_markets)
+    if total_explicit_budget <= 0.0:
+        logger.warning(
+            "Hotelling: carbon_budget is 0 for all years in scenario "
+            f"'{ordered_markets[0].scenario_name}'. "
+            "The solver will fall back to total_cap as the budget "
+            f"(cumulative cap = {total_cap_sum:.1f} Mt). "
+            "For a meaningful Hotelling path, set carbon_budget per year "
+            "to your target cumulative emissions budget."
+        )
+
     year_nums    = [_year_to_float(str(m.year)) for m in ordered_markets]
     base_year_num = year_nums[0]
 

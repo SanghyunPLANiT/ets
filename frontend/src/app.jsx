@@ -25,6 +25,7 @@ export default function App() {
   const [selPart, setSelPart] = useS(null);
   const [validationTarget, setValidationTarget] = useS(null);
   const [status, setStatus] = useS("Loading…");
+  const [serverWarnings, setServerWarnings] = useS([]);
   const [tweaksOpen, setTweaksOpen] = useS(false);
   const [tweakState, setTweakState] = useS({
     dark: false,
@@ -150,6 +151,7 @@ export default function App() {
       setResults(payload.results || {});
       setSummary(payload.summary || []);
       setAnalysis(payload.analysis || []);
+      setServerWarnings(payload.warnings || []);
       if (!activeScenarioId && payload.config?.scenarios?.length) {
         setActiveScenarioId(payload.config.scenarios[0].id);
       }
@@ -441,6 +443,22 @@ export default function App() {
         onSaveScenario={saveActiveScenarioToLibrary}
         status={status}
       />
+
+      {serverWarnings.length > 0 && (
+        <div className="server-warnings-banner">
+          <span className="server-warnings-icon">⚠</span>
+          <div className="server-warnings-list">
+            {serverWarnings.map((w, i) => (
+              <div key={i} className="server-warning-item">{w}</div>
+            ))}
+          </div>
+          <button
+            className="server-warnings-close"
+            onClick={() => setServerWarnings([])}
+            title="Dismiss"
+          >✕</button>
+        </div>
+      )}
 
       {activeSection === "build" && (
         <BuildView

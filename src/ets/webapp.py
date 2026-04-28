@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import math
 import threading
 import webbrowser
 from copy import deepcopy
@@ -11,8 +13,8 @@ from urllib.parse import urlparse
 
 import pandas as pd
 
-from .config import EXAMPLES_DIR, FRONTEND_DIST_DIR
-from .scenarios import blank_config, build_markets_from_config, load_config
+from .config import EXAMPLES_DIR, FRONTEND_DIST_DIR, USER_SCENARIOS_DIR
+from .scenarios import blank_config, build_markets_from_config, load_config, save_config
 from .simulation import run_simulation, solve_scenario_path
 
 ASSET_CONTENT_TYPES = {
@@ -42,6 +44,20 @@ def _predefined_templates() -> list[dict]:
             {
                 "id": template_id,
                 "name": label,
+                "source": "example",
+                "config": _decorate_frontend_config(config, template_id=template_id),
+            }
+        )
+    USER_SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
+    for path in sorted(USER_SCENARIOS_DIR.glob("*.json")):
+        config = load_config(path)
+        template_id = f"user_{path.stem}"
+        label = path.stem.replace("_", " ").title()
+        templates.append(
+            {
+                "id": template_id,
+                "name": f"User · {label}",
+                "source": "user",
                 "config": _decorate_frontend_config(config, template_id=template_id),
             }
         )
@@ -63,10 +79,29 @@ def _decorate_frontend_config(config: dict, template_id: str) -> dict:
     return decorated
 
 
+class _WarningCollector(logging.Handler):
+    """Lightweight log handler that accumulates WARNING-level messages."""
+    def __init__(self, store: list[str]) -> None:
+        super().__init__(level=logging.WARNING)
+        self._store = store
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self._store.append(self.format(record))
+
+
 def _build_dashboard_payload(config: dict) -> dict:
     frontend_config = _decorate_frontend_config(config, template_id="run")
     markets = build_markets_from_config(frontend_config)
-    summary_df, participant_df = run_simulation(markets)
+
+    # Capture logger warnings during simulation so they can be surfaced in the UI
+    _warnings: list[str] = []
+    _log_handler = _WarningCollector(_warnings)
+    ets_logger = logging.getLogger("src.ets")
+    ets_logger.addHandler(_log_handler)
+    try:
+        summary_df, participant_df = run_simulation(markets)
+    finally:
+        ets_logger.removeHandler(_log_handler)
 
     by_scenario: dict[str, dict[str, dict]] = {}
     scenario_market_map: dict[str, list] = {}
@@ -179,6 +214,40 @@ def _build_dashboard_payload(config: dict) -> dict:
         "annual_plots": [],
         "plots": [],
         "output_dir": None,
+        "warnings": _warnings,
+    }
+
+
+def _slugify_filename(value: str) -> str:
+    slug = "".join(char.lower() if char.isalnum() else "_" for char in str(value)).strip("_")
+    while "__" in slug:
+        slug = slug.replace("__", "_")
+    return slug or "scenario"
+
+
+def _save_user_scenario(payload: dict) -> dict:
+    scenario = payload.get("scenario")
+    if not isinstance(scenario, dict):
+        raise ValueError("Request must include a scenario object.")
+    normalized_name = str(scenario.get("name", "")).strip()
+    if not normalized_name:
+        raise ValueError("Scenario must have a non-empty name before saving.")
+    filename = payload.get("filename")
+    stem = _slugify_filename(filename or normalized_name)
+    path = USER_SCENARIOS_DIR / f"{stem}.json"
+    USER_SCENARIOS_DIR.mkdir(parents=True, exist_ok=True)
+    save_config({"scenarios": [scenario]}, path)
+    saved_config = load_config(path)
+    return {
+        "ok": True,
+        "path": str(path),
+        "filename": path.name,
+        "template": {
+            "id": f"user_{path.stem}",
+            "name": f"User · {path.stem.replace('_', ' ').title()}",
+            "source": "user",
+            "config": _decorate_frontend_config(saved_config, template_id=f"user_{path.stem}"),
+        },
     }
 
 
@@ -193,6 +262,23 @@ def _lookup_sector(config: dict, scenario_name: str, year: str | None, participa
                 if participant.get("name") == participant_name:
                     return participant.get("sector", "Other")
     return "Other"
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    return value
 
 
 class ETSRequestHandler(BaseHTTPRequestHandler):
@@ -214,15 +300,17 @@ class ETSRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path != "/api/run":
-            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
-            return
-
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length)
         try:
-            config = json.loads(body.decode("utf-8"))
-            payload = _build_dashboard_payload(config)
+            data = json.loads(body.decode("utf-8")) if body else {}
+            if parsed.path == "/api/run":
+                payload = _build_dashboard_payload(data)
+            elif parsed.path == "/api/save-scenario":
+                payload = _save_user_scenario(data)
+            else:
+                self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+                return
             self._write_json(payload)
         except Exception as exc:
             self._write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
@@ -249,7 +337,7 @@ class ETSRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _write_json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
-        data = json.dumps(payload).encode("utf-8")
+        data = json.dumps(_json_safe(payload), allow_nan=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))

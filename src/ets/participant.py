@@ -28,8 +28,8 @@ class TechnologyOption:
             raise ValueError(
                 f"{self.name}: free_allocation_ratio must be between 0 and 1."
             )
-        if self.penalty_price <= 0:
-            raise ValueError(f"{self.name}: penalty_price must be positive.")
+        if self.penalty_price < 0:
+            raise ValueError(f"{self.name}: penalty_price must be non-negative (0 = no cap).")
         if not 0.0 <= self.max_abatement_share <= 1.0:
             raise ValueError(
                 f"{self.name}: max_abatement_share must be between 0 and 1."
@@ -125,8 +125,8 @@ class MarketParticipant:
             raise ValueError(
                 f"{label}: free_allocation_ratio must be between 0 and 1."
             )
-        if penalty_price <= 0:
-            raise ValueError(f"{label}: penalty_price must be positive.")
+        if penalty_price < 0:
+            raise ValueError(f"{label}: penalty_price must be non-negative (0 = no cap).")
         if not 0.0 <= max_abatement_share <= 1.0:
             raise ValueError(
                 f"{label}: max_abatement_share must be between 0 and 1."
@@ -202,7 +202,10 @@ class MarketParticipant:
         borrowing_allowed: bool,
         borrowing_limit: float,
     ) -> dict[str, float]:
-        effective_current_price = min(carbon_price, penalty_price)
+        # penalty_price == 0 means "no compliance cap" — treat as infinity so the
+        # participant always buys allowances at market price rather than paying a penalty
+        effective_penalty = penalty_price if penalty_price > 0 else float("inf")
+        effective_current_price = min(carbon_price, effective_penalty)
         natural_balance = free_allocation + starting_bank_balance - residual_emissions
 
         if natural_balance >= 0.0:
@@ -224,7 +227,7 @@ class MarketParticipant:
             0.0,
             free_allocation + starting_bank_balance - residual_emissions - ending_bank_balance,
         )
-        if carbon_price <= penalty_price:
+        if carbon_price <= effective_penalty:
             allowance_buys = shortage
             penalty_emissions = 0.0
         else:
@@ -236,7 +239,7 @@ class MarketParticipant:
             "allowance_sells": surplus,
             "penalty_emissions": penalty_emissions,
             "allowance_cost": allowance_buys * carbon_price,
-            "penalty_cost": penalty_emissions * penalty_price,
+            "penalty_cost": penalty_emissions * (penalty_price if penalty_price > 0 else 0.0),
             "sales_revenue": surplus * carbon_price,
             "effective_current_price": effective_current_price,
         }
