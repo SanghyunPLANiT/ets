@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from copy import deepcopy
 
 import pandas as pd
 
@@ -117,9 +118,47 @@ def _simulate_path_details(
     return details
 
 
+def _collect_path_results(
+    ordered_markets: list[CarbonMarket],
+    path_details: list[dict],
+    scenario_summaries: list,
+    participant_frames: list,
+) -> None:
+    """Append results from a solved path into the accumulator lists."""
+    for item in path_details:
+        market = item["market"]
+        expected_future_price = item["expected_future_price"]
+        equilibrium = item["equilibrium"]
+        equilibrium_price = float(equilibrium["price"])
+        participant_df = item["participant_df"]
+        scenario_summaries.append(
+            market.scenario_summary(
+                equilibrium_price,
+                expected_future_price=expected_future_price,
+                auction_outcome=equilibrium,
+                participant_df=participant_df,
+            )
+        )
+        participant_frames.append(participant_df)
+
+
+def _rename_markets(markets: list[CarbonMarket], suffix: str) -> list[CarbonMarket]:
+    """Return shallow copies of markets with scenario_name suffixed."""
+    renamed = []
+    for m in markets:
+        copy = deepcopy(m)
+        copy.scenario_name = f"{m.scenario_name} [{suffix}]"
+        renamed.append(copy)
+    return renamed
+
+
 def run_simulation(markets: list[CarbonMarket]) -> tuple[pd.DataFrame, pd.DataFrame]:
     if not markets:
         raise ValueError("At least one market scenario must be provided.")
+
+    # Lazy imports to avoid circular dependency
+    from .hotelling import solve_hotelling_path
+    from .nash import solve_nash_path
 
     grouped_markets: dict[str, list[CarbonMarket]] = defaultdict(list)
     for market in markets:
@@ -130,21 +169,38 @@ def run_simulation(markets: list[CarbonMarket]) -> tuple[pd.DataFrame, pd.DataFr
 
     for scenario_name, scenario_markets in grouped_markets.items():
         ordered_markets = sorted(scenario_markets, key=_market_year_sort_key)
-        for item in solve_scenario_path(ordered_markets):
-            market = item["market"]
-            expected_future_price = item["expected_future_price"]
-            equilibrium = item["equilibrium"]
-            equilibrium_price = float(equilibrium["price"])
-            participant_df = item["participant_df"]
-            scenario_summaries.append(
-                market.scenario_summary(
-                    equilibrium_price,
-                    expected_future_price=expected_future_price,
-                    auction_outcome=equilibrium,
-                    participant_df=participant_df,
-                )
-            )
-            participant_frames.append(participant_df)
+        approach = getattr(ordered_markets[0], "model_approach", "competitive") or "competitive"
+
+        if approach == "hotelling":
+            discount_rate = float(getattr(ordered_markets[0], "discount_rate", 0.04) or 0.04)
+            path = solve_hotelling_path(ordered_markets, discount_rate=discount_rate)
+            _collect_path_results(ordered_markets, path, scenario_summaries, participant_frames)
+
+        elif approach == "nash_cournot":
+            strategic = getattr(ordered_markets[0], "nash_strategic_participants", None) or []
+            path = solve_nash_path(ordered_markets, strategic_participants=strategic or None)
+            _collect_path_results(ordered_markets, path, scenario_summaries, participant_frames)
+
+        elif approach == "all":
+            # Run all three approaches and label results
+            discount_rate = float(getattr(ordered_markets[0], "discount_rate", 0.04) or 0.04)
+            strategic = getattr(ordered_markets[0], "nash_strategic_participants", None) or []
+
+            comp_markets = _rename_markets(ordered_markets, "Competitive")
+            hot_markets  = _rename_markets(ordered_markets, "Hotelling")
+            nash_markets = _rename_markets(ordered_markets, "Nash-Cournot")
+
+            comp_path = solve_scenario_path(comp_markets)
+            hot_path  = solve_hotelling_path(hot_markets, discount_rate=discount_rate)
+            nash_path = solve_nash_path(nash_markets, strategic_participants=strategic or None)
+
+            for path, mkt_list in [(comp_path, comp_markets), (hot_path, hot_markets), (nash_path, nash_markets)]:
+                _collect_path_results(mkt_list, path, scenario_summaries, participant_frames)
+
+        else:
+            # Default: competitive
+            path = solve_scenario_path(ordered_markets)
+            _collect_path_results(ordered_markets, path, scenario_summaries, participant_frames)
 
     summary_df = pd.DataFrame.from_records(scenario_summaries)
     participant_df = pd.concat(participant_frames, ignore_index=True)

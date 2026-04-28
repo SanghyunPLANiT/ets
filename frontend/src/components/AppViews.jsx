@@ -38,6 +38,7 @@ function BuildView({
   const seriesFields = [
     "total_cap",
     "auction_offered",
+    "carbon_budget",
     "reserved_allowances",
     "cancelled_allowances",
     "auction_reserve_price",

@@ -2162,3 +2162,102 @@ html[data-chart="terminal"][data-theme="light"] { --panel: #fafaf7; --bg: #eeede
   .guide-editor-step { grid-template-columns: 1fr; }
   .guide-editor-step-num { border-right: none; border-bottom: 1px solid var(--line); }
 }
+
+/* ── Modelling approach selector ──────────────────── */
+.approach-selector {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 16px;
+  margin-bottom: 20px;
+}
+.approach-selector-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.approach-selector-options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 0;
+}
+.approach-option {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s, background 0.12s;
+}
+.approach-option:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+}
+.approach-option.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+.approach-option-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.approach-option.on .approach-option-label {
+  color: var(--accent);
+}
+.approach-option-sub {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.approach-params {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.approach-params label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.approach-params-hint {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.approach-nash-participants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.approach-nash-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 5px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.approach-nash-check input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+@media (max-width: 800px) {
+  .approach-selector-options { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 500px) {
+  .approach-selector-options { grid-template-columns: 1fr; }
+}

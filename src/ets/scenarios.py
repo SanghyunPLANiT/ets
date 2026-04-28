@@ -12,6 +12,7 @@ from .participant import MarketParticipant, TechnologyOption
 
 ALLOWED_AUCTION_MODES = {"explicit", "derive_from_cap"}
 ALLOWED_ABATEMENT_TYPES = {"linear", "threshold", "piecewise"}
+ALLOWED_MODEL_APPROACHES = {"competitive", "hotelling", "nash_cournot", "all"}
 
 
 def blank_config() -> dict[str, Any]:
@@ -21,6 +22,9 @@ def blank_config() -> dict[str, Any]:
 def blank_scenario() -> dict[str, Any]:
     return {
         "name": "New Scenario",
+        "model_approach": "competitive",
+        "discount_rate": 0.04,
+        "nash_strategic_participants": [],
         "years": [blank_year_config()],
     }
 
@@ -29,6 +33,7 @@ def blank_year_config() -> dict[str, Any]:
     return {
         "year": "2030",
         "total_cap": 0.0,
+        "carbon_budget": 0.0,
         "auction_mode": "explicit",
         "auction_offered": 0.0,
         "reserved_allowances": 0.0,
@@ -109,7 +114,18 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         )
 
     scenario["years"] = [normalize_year(item) for item in years]
-    return {"name": scenario["name"], "years": scenario["years"]}
+
+    model_approach = str(scenario.get("model_approach") or "competitive").strip()
+    if model_approach not in ALLOWED_MODEL_APPROACHES:
+        model_approach = "competitive"
+
+    return {
+        "name": scenario["name"],
+        "model_approach": model_approach,
+        "discount_rate": float(scenario.get("discount_rate") or 0.04),
+        "nash_strategic_participants": list(scenario.get("nash_strategic_participants") or []),
+        "years": scenario["years"],
+    }
 
 
 def _legacy_scenario_to_year(raw_scenario: dict[str, Any]) -> dict[str, Any]:
@@ -166,6 +182,7 @@ def normalize_year(raw_year: dict[str, Any]) -> dict[str, Any]:
     year_config["manual_expected_price"] = float(
         year_config.get("manual_expected_price", 0.0)
     )
+    year_config["carbon_budget"] = float(year_config.get("carbon_budget") or 0.0)
 
     if year_config["auction_mode"] not in ALLOWED_AUCTION_MODES:
         raise ValueError(
@@ -347,12 +364,21 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
     normalized = normalize_config(deepcopy(config))
     markets: list[CarbonMarket] = []
     for scenario in normalized["scenarios"]:
+        scenario_meta = {
+            "model_approach": scenario.get("model_approach", "competitive"),
+            "discount_rate": scenario.get("discount_rate", 0.04),
+            "nash_strategic_participants": scenario.get("nash_strategic_participants", []),
+        }
         for year_config in scenario["years"]:
-            markets.append(build_market_from_year(scenario["name"], year_config))
+            markets.append(build_market_from_year(scenario["name"], year_config, scenario_meta))
     return markets
 
 
-def build_market_from_year(scenario_name: str, year_config: dict[str, Any]) -> CarbonMarket:
+def build_market_from_year(
+    scenario_name: str,
+    year_config: dict[str, Any],
+    scenario_meta: dict[str, Any] | None = None,
+) -> CarbonMarket:
     participants = [build_participant(item) for item in year_config["participants"]]
     free_allocations = sum(participant.free_allocation for participant in participants)
     reserved_allowances = float(year_config.get("reserved_allowances", 0.0))
@@ -374,7 +400,8 @@ def build_market_from_year(scenario_name: str, year_config: dict[str, Any]) -> C
             "auction offered. Raise the cap or lower free allocation."
         )
 
-    return CarbonMarket(
+    meta = scenario_meta or {}
+    market = CarbonMarket(
         participants=participants,
         total_cap=year_config["total_cap"],
         auction_offered=auction_offered,
@@ -393,6 +420,12 @@ def build_market_from_year(scenario_name: str, year_config: dict[str, Any]) -> C
         expectation_rule=year_config["expectation_rule"],
         manual_expected_price=year_config["manual_expected_price"],
     )
+    # Attach scenario-level and year-level modelling approach fields
+    market.model_approach = meta.get("model_approach", "competitive")
+    market.discount_rate = float(meta.get("discount_rate") or 0.04)
+    market.nash_strategic_participants = list(meta.get("nash_strategic_participants") or [])
+    market.carbon_budget = float(year_config.get("carbon_budget") or 0.0)
+    return market
 
 
 def build_participant(participant: dict[str, Any]) -> MarketParticipant:

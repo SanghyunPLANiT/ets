@@ -925,6 +925,106 @@ export function Editor({
             <span className="field-flag required">required</span>
             <span className="field-flag optional">optional</span>
           </div>
+
+          {/* ── Modelling approach selector ── */}
+          <div className="approach-selector">
+            <div className="approach-selector-label">Modelling approach</div>
+            <div className="approach-selector-options">
+              {[
+                { id: "competitive", label: "Competitive", sub: "Walrasian price-taking equilibrium (default)" },
+                { id: "hotelling",   label: "Hotelling Rule", sub: "Optimal depletion — price rises at discount rate" },
+                { id: "nash_cournot", label: "Nash–Cournot", sub: "Strategic participants with market power" },
+                { id: "all",         label: "Run All", sub: "Compare all three approaches simultaneously" },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={"approach-option " + ((workingScenario.model_approach || "competitive") === opt.id ? "on" : "")}
+                  onClick={() => updateScenario({ model_approach: opt.id })}
+                >
+                  <span className="approach-option-label">{opt.label}</span>
+                  <span className="approach-option-sub">{opt.sub}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Hotelling extra fields */}
+            {(workingScenario.model_approach === "hotelling" || workingScenario.model_approach === "all") && (
+              <div className="approach-params">
+                <label>
+                  <span className="ekey">Discount rate <span className="field-flag optional">optional</span></span>
+                  <input
+                    type="number"
+                    className="text"
+                    step="0.01"
+                    min="0"
+                    max="0.5"
+                    value={workingScenario.discount_rate ?? 0.04}
+                    onChange={(e) => updateScenario({ discount_rate: parseFloat(e.target.value) || 0.04 })}
+                  />
+                  <span className="approach-params-hint">Annual discount rate r — Hotelling price path grows at (1+r)^t. Default 0.04 = 4%.</span>
+                </label>
+                <label>
+                  <span className="ekey">Carbon budget (this year) <span className="field-flag optional">optional</span></span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="number"
+                      className="text"
+                      step="1"
+                      min="0"
+                      value={workingYear.carbon_budget || 0}
+                      onChange={(e) => updateYear({ carbon_budget: parseFloat(e.target.value) || 0 })}
+                    />
+                    <button type="button" className="ghost-btn" style={{ flexShrink: 0 }}
+                      onClick={() => openMarketSeriesEditor("carbon_budget")}>
+                      Edit pathway ↗
+                    </button>
+                  </div>
+                  <span className="approach-params-hint">Mt CO₂e allowed this year. Set across all years using the pathway chart.</span>
+                </label>
+              </div>
+            )}
+
+            {/* Nash extra fields */}
+            {(workingScenario.model_approach === "nash_cournot" || workingScenario.model_approach === "all") && (
+              <div className="approach-params">
+                <div className="ekey" style={{ marginBottom: 6 }}>
+                  Strategic participants <span className="field-flag optional">optional</span>
+                  <span className="approach-params-hint" style={{ display: "block", marginTop: 2 }}>
+                    Select which participants behave strategically (internalize price impact). Leave all unchecked to make everyone strategic.
+                  </span>
+                </div>
+                <div className="approach-nash-participants">
+                  {(workingYear.participants || []).length === 0 && (
+                    <span className="muted" style={{ fontSize: 12 }}>No participants yet — add them in Step 3.</span>
+                  )}
+                  {(workingYear.participants || []).map((p) => {
+                    const isStrategic = !(workingScenario.nash_strategic_participants?.length) ||
+                      (workingScenario.nash_strategic_participants || []).includes(p.name);
+                    return (
+                      <label key={p.name} className="approach-nash-check">
+                        <input
+                          type="checkbox"
+                          checked={isStrategic}
+                          onChange={(e) => {
+                            const current = workingScenario.nash_strategic_participants || [];
+                            const allNames = (workingYear.participants || []).map((x) => x.name);
+                            const base = current.length === 0 ? allNames : current;
+                            const next = e.target.checked
+                              ? [...new Set([...base, p.name])]
+                              : base.filter((n) => n !== p.name);
+                            updateScenario({ nash_strategic_participants: next });
+                          }}
+                        />
+                        <span>{p.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="builder-form-grid">
             <label>
               <span className="ekey">Year label <span className="field-flag required">required</span></span>

@@ -12,6 +12,7 @@ const SERIES_FIELD_META = {
   price_upper_bound: { label: "Price ceiling", unit: "$/t", step: 1, min: 0, format: (value) => fmt.price(value), description: "Equilibrium price is capped at this value. Models a safety valve or maximum price commitment." },
   borrowing_limit: { label: "Borrowing limit", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => `${fmt.num(value, 0)} Mt`, description: "Maximum volume a participant may borrow from a future period's allocation to cover current compliance. Requires borrowing to be enabled." },
   manual_expected_price: { label: "Manual expected price", unit: "$/t", step: 1, min: 0, format: (value) => fmt.price(value), description: "Overrides the expectation rule and sets the future carbon price assumption manually. Only active when expectation rule is set to Manual." },
+  carbon_budget: { label: "Carbon budget", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => `${fmt.num(value, 0)} Mt`, description: "Annual carbon budget for the Hotelling rule approach. The solver finds the shadow price λ such that cumulative residual emissions equal the cumulative budget across all years." },
   initial_emissions: { label: "Initial emissions", unit: "Mt CO₂e", step: 1, min: 0, format: (value) => fmt.num(value, 1), description: "Gross emissions before any abatement. This is the participant's baseline coverage obligation each year." },
   free_allocation_ratio: { label: "Free allocation ratio", unit: "ratio 0–1", step: 0.05, min: 0, max: 1, format: (value) => fmt.num(value, 2), description: "Share of a participant's initial emissions covered by free allowances. 1.0 means fully covered for free; 0 means no free allocation." },
   penalty_price: { label: "Penalty price", unit: "$/t", step: 1, min: 0, format: (value) => fmt.price(value), description: "Price paid per tonne of uncovered emissions when a participant exceeds their allowance holdings. Acts as a compliance ceiling." },
@@ -61,6 +62,7 @@ function makeBlankYear(label = "2030") {
     borrowing_limit: 0,
     expectation_rule: "next_year_baseline",
     manual_expected_price: 0,
+    carbon_budget: 0,
     participants: [],
   };
 }
@@ -71,6 +73,9 @@ function makeBlankScenario(index = 1) {
     name: `New Scenario ${index}`,
     color: "#1f6f55",
     description: "Describe the policy design, participants, and transition logic for this scenario.",
+    model_approach: "competitive",
+    discount_rate: 0.04,
+    nash_strategic_participants: [],
     years: [makeBlankYear("2030")],
   };
 }
