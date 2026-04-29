@@ -46,11 +46,16 @@ function makeBlankParticipant(index = 1) {
     cbam_coverage_ratio: 1,
     cbam_jurisdictions: [],
     sector_group: "",
+    sector_allocation_share: 0,
     // Scope 2 / indirect emissions
     electricity_consumption: 0,
     grid_emission_factor: 0,
     scope2_cbam_coverage: 0,
   };
+}
+
+function makeBlankSector() {
+  return { name: "New Sector", cap_trajectory: {}, auction_share_trajectory: {}, carbon_budget: 0 };
 }
 
 function makeBlankYear(label = "2030") {
@@ -90,6 +95,7 @@ function makeBlankScenario(index = 1) {
     risk_premium: 0.0,
     nash_strategic_participants: [],
     free_allocation_trajectories: [],
+    sectors: [],
     cap_trajectory: {},
     price_floor_trajectory: {},
     price_ceiling_trajectory: {},
@@ -1114,6 +1120,7 @@ export {
   makeBlankParticipant,
   makeBlankYear,
   makeBlankScenario,
+  makeBlankSector,
   buildDraftResult,
   configsEqual,
   buildTechnologyPathway,

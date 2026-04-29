@@ -77,6 +77,26 @@ def _interp_ratio(year_num: float, traj: dict) -> float | None:
     return round(r_start + frac * (r_end - r_start), 6)
 
 
+def _normalize_sectors(raw_sectors: list) -> list:
+    """Normalize and validate a list of sector objects."""
+    if not raw_sectors:
+        return []
+    normalized = []
+    for s in raw_sectors:
+        if not isinstance(s, dict):
+            continue
+        name = str(s.get("name") or "").strip()
+        if not name:
+            raise ValueError("Each sector must have a non-empty name.")
+        normalized.append({
+            "name": name,
+            "cap_trajectory": _normalize_trajectory(s.get("cap_trajectory")),
+            "auction_share_trajectory": _normalize_trajectory(s.get("auction_share_trajectory")),
+            "carbon_budget": float(s.get("carbon_budget") or 0.0),
+        })
+    return normalized
+
+
 def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     scenarios = config.get("scenarios")
     if not isinstance(scenarios, list):
@@ -100,6 +120,19 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         )
 
     scenario["years"] = [normalize_year(item) for item in years]
+
+    # Validate sector references in participants
+    raw_sectors = scenario.get("sectors") or []
+    if raw_sectors:
+        sector_names = {str(s.get("name") or "").strip() for s in raw_sectors if isinstance(s, dict)}
+        for year_item in scenario["years"]:
+            for p in year_item.get("participants", []):
+                sg = str(p.get("sector_group") or "")
+                if sg and sg not in sector_names:
+                    raise ValueError(
+                        f"Participant '{p['name']}' has sector_group '{sg}' which does not "
+                        f"match any defined sector. Defined sectors: {sorted(sector_names)}."
+                    )
 
     model_approach = str(scenario.get("model_approach") or "competitive").strip()
     if model_approach not in ALLOWED_MODEL_APPROACHES:
@@ -138,6 +171,7 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         "cap_trajectory": _normalize_trajectory(scenario.get("cap_trajectory")),
         "price_floor_trajectory": _normalize_trajectory(scenario.get("price_floor_trajectory")),
         "price_ceiling_trajectory": _normalize_trajectory(scenario.get("price_ceiling_trajectory")),
+        "sectors": _normalize_sectors(scenario.get("sectors") or []),
         "years": scenario["years"],
     }
 
@@ -184,6 +218,7 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
             "cap_trajectory": scenario.get("cap_trajectory", {}),
             "price_floor_trajectory": scenario.get("price_floor_trajectory", {}),
             "price_ceiling_trajectory": scenario.get("price_ceiling_trajectory", {}),
+            "sectors": scenario.get("sectors", []),
             # MSR
             "msr_enabled": scenario.get("msr_enabled", False),
             "msr_upper_threshold": scenario.get("msr_upper_threshold", 200.0),
@@ -215,8 +250,56 @@ def build_market_from_year(
     meta = scenario_meta or {}
     year_num = _year_to_float(str(year_config.get("year", "2030")))
     trajectories = list(meta.get("free_allocation_trajectories") or [])
+    sectors = list(meta.get("sectors") or [])
 
-    participants = [build_participant(item) for item in year_config["participants"]]
+    # ── Sector-level derivation ──────────────────────────────────────────────
+    # When sectors are defined, compute per-sector pools and derive total_cap /
+    # auction_offered from the sum of sector caps.  Per-participant
+    # free_allocation_ratio is derived here (on raw dicts) before building
+    # MarketParticipant objects so the dataclass validation sees the final value.
+    sector_pools: dict[str, float] = {}
+    derived_total_cap: float | None = None
+    derived_auction: float | None = None
+
+    if sectors:
+        _derived_total_cap = 0.0
+        _derived_auction = 0.0
+        for s in sectors:
+            sname = s["name"]
+            scap = _interp_value(year_num, s.get("cap_trajectory") or {})
+            if scap is None:
+                # Fall back to summing participant initial_emissions for this sector
+                scap = sum(
+                    float(p.get("initial_emissions", 0))
+                    for p in year_config.get("participants", [])
+                    if str(p.get("sector_group", "")) == sname
+                )
+            sauc_share = _interp_value(year_num, s.get("auction_share_trajectory") or {}) or 0.0
+            sauc = scap * sauc_share
+            sector_pools[sname] = scap - sauc
+            _derived_total_cap += scap
+            _derived_auction += sauc
+        derived_total_cap = _derived_total_cap
+        derived_auction = _derived_auction
+
+        # Patch raw participant dicts with sector-derived free_allocation_ratio
+        # (we work on a shallow copy to avoid mutating the caller's config)
+        raw_participants = []
+        for p in year_config.get("participants", []):
+            sg = str(p.get("sector_group", ""))
+            sas = float(p.get("sector_allocation_share", 0.0) or 0.0)
+            ie = float(p.get("initial_emissions", 0) or 0)
+            if sg in sector_pools and sas > 0 and ie > 0:
+                pool = sector_pools[sg]
+                allocated_mt = pool * sas
+                derived_ratio = min(1.0, allocated_mt / ie)
+                raw_participants.append({**p, "free_allocation_ratio": derived_ratio})
+            else:
+                raw_participants.append(p)
+    else:
+        raw_participants = list(year_config.get("participants", []))
+
+    participants = [build_participant(item) for item in raw_participants]
 
     # Apply free-allocation phase-out trajectories — override per-participant ratio
     if trajectories:
@@ -251,6 +334,14 @@ def build_market_from_year(
     if ceiling_override is not None:
         price_upper_bound = ceiling_override
 
+    # Sector-derived values override cap_trajectory and per-year values
+    if derived_total_cap is not None:
+        total_cap = derived_total_cap
+    if derived_auction is not None:
+        auction_offered_from_sectors = derived_auction
+    else:
+        auction_offered_from_sectors = None
+
     if year_config["auction_mode"] == "derive_from_cap":
         auction_offered = (
             total_cap
@@ -258,6 +349,8 @@ def build_market_from_year(
             - reserved_allowances
             - cancelled_allowances
         )
+    elif auction_offered_from_sectors is not None:
+        auction_offered = auction_offered_from_sectors
     else:
         auction_offered = year_config["auction_offered"]
 
@@ -372,6 +465,7 @@ def build_participant(participant: dict[str, Any]) -> MarketParticipant:
         cbam_coverage_ratio=float(participant.get("cbam_coverage_ratio") or 1.0),
         cbam_jurisdictions=list(participant.get("cbam_jurisdictions") or []),
         sector_group=str(participant.get("sector_group") or ""),
+        sector_allocation_share=float(participant.get("sector_allocation_share") or 0.0),
         electricity_consumption=float(participant.get("electricity_consumption") or 0.0),
         grid_emission_factor=float(participant.get("grid_emission_factor") or 0.0),
         scope2_cbam_coverage=float(participant.get("scope2_cbam_coverage") or 0.0),

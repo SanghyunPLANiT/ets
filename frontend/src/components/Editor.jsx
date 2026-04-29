@@ -1,6 +1,6 @@
 import React from "react";
 import { fmt } from "./MarketChart.jsx";
-import { YearSeriesModal, getSeriesFieldMeta } from "./AppShared.jsx";
+import { YearSeriesModal, getSeriesFieldMeta, makeBlankSector } from "./AppShared.jsx";
 
 export function Editor({
   scenario,
@@ -915,6 +915,192 @@ export function Editor({
               />
             </label>
           </div>
+
+          {/* ── Sectors panel ─────────────────────────────────────────── */}
+          <div className="sector-panel">
+            <div className="sector-panel-head">
+              <span className="sector-panel-label">Sectors <span className="field-flag optional">optional</span></span>
+              <button
+                type="button"
+                className="ghost-btn on"
+                style={{ fontSize: 12 }}
+                onClick={() => updateScenario({ sectors: [...(workingScenario.sectors || []), makeBlankSector()] })}
+              >
+                + Add sector
+              </button>
+            </div>
+            <span className="approach-params-hint">
+              When sectors are defined, total_cap and auction_offered are derived from the sum of sector caps.
+              Each participant's free allocation ratio is computed from their sector pool and sector_allocation_share.
+            </span>
+            <div className="sector-list">
+              {(workingScenario.sectors || []).map((sector, si) => {
+                const capActive = !!(sector.cap_trajectory?.start_year && sector.cap_trajectory?.end_year
+                  && sector.cap_trajectory?.start_value !== undefined && sector.cap_trajectory?.end_value !== undefined);
+                const aucActive = !!(sector.auction_share_trajectory?.start_year && sector.auction_share_trajectory?.end_year
+                  && sector.auction_share_trajectory?.start_value !== undefined && sector.auction_share_trajectory?.end_value !== undefined);
+                return (
+                  <div key={si} className="sector-row">
+                    <div className="sector-row-fields">
+                      <label style={{ flex: 2 }}>
+                        <span style={{ fontSize: 11 }}>Name</span>
+                        <input
+                          type="text"
+                          className="text"
+                          value={sector.name ?? ""}
+                          onChange={(e) => {
+                            const next = [...(workingScenario.sectors || [])];
+                            next[si] = { ...next[si], name: e.target.value };
+                            updateScenario({ sectors: next });
+                          }}
+                        />
+                      </label>
+                      <label style={{ flex: 1 }}>
+                        <span style={{ fontSize: 11 }}>Carbon budget (Mt)</span>
+                        <input
+                          type="number"
+                          className="num"
+                          step="1"
+                          min="0"
+                          value={sector.carbon_budget ?? 0}
+                          onChange={(e) => {
+                            const next = [...(workingScenario.sectors || [])];
+                            next[si] = { ...next[si], carbon_budget: +e.target.value };
+                            updateScenario({ sectors: next });
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="ghost-btn danger-btn"
+                        style={{ fontSize: 11, padding: "2px 8px", alignSelf: "flex-end" }}
+                        onClick={() => updateScenario({ sectors: (workingScenario.sectors || []).filter((_, i) => i !== si) })}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    {/* Cap trajectory */}
+                    <div className="traj-section" style={{ marginTop: 6 }}>
+                      <div className="traj-head">
+                        <span className="traj-label" style={{ fontSize: 11 }}>Cap trajectory</span>
+                        {capActive
+                          ? <button type="button" className="ghost-btn" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => {
+                              const next = [...(workingScenario.sectors || [])];
+                              next[si] = { ...next[si], cap_trajectory: {} };
+                              updateScenario({ sectors: next });
+                            }}>Clear</button>
+                          : <button type="button" className="ghost-btn on" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => {
+                              const years = workingScenario.years || [];
+                              const startY = years.length ? String(years[0].year) : "2026";
+                              const endY = years.length ? String(years[years.length - 1].year) : "2035";
+                              const next = [...(workingScenario.sectors || [])];
+                              next[si] = { ...next[si], cap_trajectory: { start_year: startY, end_year: endY, start_value: 100, end_value: 60 } };
+                              updateScenario({ sectors: next });
+                            }}>Enable</button>
+                        }
+                      </div>
+                      {capActive && (
+                        <div className="traj-row" style={{ gridTemplateColumns: "70px 70px 100px 100px", gap: 6, padding: "6px 10px" }}>
+                          <div className="builder-form-field" style={{ margin: 0 }}>
+                            <label style={{ fontSize: 10 }}>Start year</label>
+                            <input type="text" value={sector.cap_trajectory.start_year ?? ""} onChange={(e) => {
+                              const next = [...(workingScenario.sectors || [])];
+                              next[si] = { ...next[si], cap_trajectory: { ...next[si].cap_trajectory, start_year: e.target.value } };
+                              updateScenario({ sectors: next });
+                            }} />
+                          </div>
+                          <div className="builder-form-field" style={{ margin: 0 }}>
+                            <label style={{ fontSize: 10 }}>End year</label>
+                            <input type="text" value={sector.cap_trajectory.end_year ?? ""} onChange={(e) => {
+                              const next = [...(workingScenario.sectors || [])];
+                              next[si] = { ...next[si], cap_trajectory: { ...next[si].cap_trajectory, end_year: e.target.value } };
+                              updateScenario({ sectors: next });
+                            }} />
+                          </div>
+                          <div className="builder-form-field" style={{ margin: 0 }}>
+                            <label style={{ fontSize: 10 }}>Start value (Mt)</label>
+                            <input type="number" step="1" value={sector.cap_trajectory.start_value ?? ""} onChange={(e) => {
+                              const next = [...(workingScenario.sectors || [])];
+                              next[si] = { ...next[si], cap_trajectory: { ...next[si].cap_trajectory, start_value: +e.target.value } };
+                              updateScenario({ sectors: next });
+                            }} />
+                          </div>
+                          <div className="builder-form-field" style={{ margin: 0 }}>
+                            <label style={{ fontSize: 10 }}>End value (Mt)</label>
+                            <input type="number" step="1" value={sector.cap_trajectory.end_value ?? ""} onChange={(e) => {
+                              const next = [...(workingScenario.sectors || [])];
+                              next[si] = { ...next[si], cap_trajectory: { ...next[si].cap_trajectory, end_value: +e.target.value } };
+                              updateScenario({ sectors: next });
+                            }} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {/* Auction share trajectory */}
+                    <div className="traj-section" style={{ marginTop: 4 }}>
+                      <div className="traj-head">
+                        <span className="traj-label" style={{ fontSize: 11 }}>Auction share trajectory (0–1)</span>
+                        {aucActive
+                          ? <button type="button" className="ghost-btn" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => {
+                              const next = [...(workingScenario.sectors || [])];
+                              next[si] = { ...next[si], auction_share_trajectory: {} };
+                              updateScenario({ sectors: next });
+                            }}>Clear</button>
+                          : <button type="button" className="ghost-btn on" style={{ fontSize: 10, padding: "1px 6px" }} onClick={() => {
+                              const years = workingScenario.years || [];
+                              const startY = years.length ? String(years[0].year) : "2026";
+                              const endY = years.length ? String(years[years.length - 1].year) : "2035";
+                              const next = [...(workingScenario.sectors || [])];
+                              next[si] = { ...next[si], auction_share_trajectory: { start_year: startY, end_year: endY, start_value: 0, end_value: 0.3 } };
+                              updateScenario({ sectors: next });
+                            }}>Enable</button>
+                        }
+                      </div>
+                      {aucActive && (
+                        <div className="traj-row" style={{ gridTemplateColumns: "70px 70px 100px 100px", gap: 6, padding: "6px 10px" }}>
+                          <div className="builder-form-field" style={{ margin: 0 }}>
+                            <label style={{ fontSize: 10 }}>Start year</label>
+                            <input type="text" value={sector.auction_share_trajectory.start_year ?? ""} onChange={(e) => {
+                              const next = [...(workingScenario.sectors || [])];
+                              next[si] = { ...next[si], auction_share_trajectory: { ...next[si].auction_share_trajectory, start_year: e.target.value } };
+                              updateScenario({ sectors: next });
+                            }} />
+                          </div>
+                          <div className="builder-form-field" style={{ margin: 0 }}>
+                            <label style={{ fontSize: 10 }}>End year</label>
+                            <input type="text" value={sector.auction_share_trajectory.end_year ?? ""} onChange={(e) => {
+                              const next = [...(workingScenario.sectors || [])];
+                              next[si] = { ...next[si], auction_share_trajectory: { ...next[si].auction_share_trajectory, end_year: e.target.value } };
+                              updateScenario({ sectors: next });
+                            }} />
+                          </div>
+                          <div className="builder-form-field" style={{ margin: 0 }}>
+                            <label style={{ fontSize: 10 }}>Start share</label>
+                            <input type="number" step="0.05" min="0" max="1" value={sector.auction_share_trajectory.start_value ?? ""} onChange={(e) => {
+                              const next = [...(workingScenario.sectors || [])];
+                              next[si] = { ...next[si], auction_share_trajectory: { ...next[si].auction_share_trajectory, start_value: +e.target.value } };
+                              updateScenario({ sectors: next });
+                            }} />
+                          </div>
+                          <div className="builder-form-field" style={{ margin: 0 }}>
+                            <label style={{ fontSize: 10 }}>End share</label>
+                            <input type="number" step="0.05" min="0" max="1" value={sector.auction_share_trajectory.end_value ?? ""} onChange={(e) => {
+                              const next = [...(workingScenario.sectors || [])];
+                              next[si] = { ...next[si], auction_share_trajectory: { ...next[si].auction_share_trajectory, end_value: +e.target.value } };
+                              updateScenario({ sectors: next });
+                            }} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {!(workingScenario.sectors || []).length && (
+                <div className="builder-empty">No sectors defined. Add a sector to enable sector-level cap and allocation configuration.</div>
+              )}
+            </div>
+          </div>
         </section>
       )}
 
@@ -1625,10 +1811,61 @@ export function Editor({
                         <span className="ekey">{fieldWithPathButton("Initial emissions", () => openParticipantSeriesEditor("initial_emissions"), true)}</span>
                         {numInput(participant.initial_emissions, (value) => updateParticipant(selectedParticipantIndex, { initial_emissions: value }), 1, 0)}
                       </label>
-                      <label>
-                        <span className="ekey">{fieldWithPathButton("Free allocation ratio", () => openParticipantSeriesEditor("free_allocation_ratio"), true)}</span>
-                        {numInput(participant.free_allocation_ratio, (value) => updateParticipant(selectedParticipantIndex, { free_allocation_ratio: value }), 0.05, 0)}
-                      </label>
+                      {(() => {
+                        const definedSectors = workingScenario.sectors || [];
+                        const participantSectorGroup = participant.sector_group ?? "";
+                        const sectorMatch = definedSectors.find((s) => s.name === participantSectorGroup);
+                        if (sectorMatch) {
+                          // Sector mode: show sector_allocation_share with live preview
+                          const sas = Number(participant.sector_allocation_share ?? 0);
+                          const ie = Number(participant.initial_emissions ?? 0);
+                          const cap = sectorMatch.cap_trajectory;
+                          const capActive = !!(cap?.start_year && cap?.end_year && cap?.start_value !== undefined && cap?.end_value !== undefined);
+                          let previewMt = null;
+                          if (capActive && ie > 0) {
+                            const years = workingScenario.years || [];
+                            const yearNum = Number(workingYear.year);
+                            const t0 = Number(cap.start_year), t1 = Number(cap.end_year);
+                            const v0 = Number(cap.start_value), v1 = Number(cap.end_value);
+                            let sectorCap;
+                            if (yearNum <= t0) sectorCap = v0;
+                            else if (yearNum >= t1) sectorCap = v1;
+                            else sectorCap = v0 + (v1 - v0) * (yearNum - t0) / (t1 - t0);
+                            const aucTraj = sectorMatch.auction_share_trajectory;
+                            const aucActive2 = !!(aucTraj?.start_year && aucTraj?.end_year && aucTraj?.start_value !== undefined && aucTraj?.end_value !== undefined);
+                            let aucShare = 0;
+                            if (aucActive2) {
+                              const at0 = Number(aucTraj.start_year), at1 = Number(aucTraj.end_year);
+                              const av0 = Number(aucTraj.start_value), av1 = Number(aucTraj.end_value);
+                              if (yearNum <= at0) aucShare = av0;
+                              else if (yearNum >= at1) aucShare = av1;
+                              else aucShare = av0 + (av1 - av0) * (yearNum - at0) / (at1 - at0);
+                            }
+                            const pool = sectorCap * (1 - aucShare);
+                            previewMt = Math.min(ie, pool * sas);
+                          }
+                          return (
+                            <label>
+                              <span className="ekey">Sector allocation share <span className="field-flag optional">optional</span></span>
+                              {numInput(sas, (value) => updateParticipant(selectedParticipantIndex, { sector_allocation_share: Math.min(1, Math.max(0, value)) }), 0.01, 0)}
+                              {previewMt !== null && (
+                                <span className="approach-params-hint">
+                                  ≈ {previewMt.toFixed(1)} Mt free allocation in year {workingYear.year}
+                                </span>
+                              )}
+                              <span className="approach-params-hint">
+                                Share of the {sectorMatch.name} sector's free allocation pool (0–1). Replaces free_allocation_ratio.
+                              </span>
+                            </label>
+                          );
+                        }
+                        return (
+                          <label>
+                            <span className="ekey">{fieldWithPathButton("Free allocation ratio", () => openParticipantSeriesEditor("free_allocation_ratio"), true)}</span>
+                            {numInput(participant.free_allocation_ratio, (value) => updateParticipant(selectedParticipantIndex, { free_allocation_ratio: value }), 0.05, 0)}
+                          </label>
+                        );
+                      })()}
                       <label>
                         <span className="ekey">{fieldWithPathButton("Penalty price", () => openParticipantSeriesEditor("penalty_price"), true)}</span>
                         {numInput(participant.penalty_price, (value) => updateParticipant(selectedParticipantIndex, { penalty_price: value }), 1, 0)}

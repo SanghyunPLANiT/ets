@@ -97,6 +97,8 @@ class MarketParticipant:
     cbam_jurisdictions: list = field(default_factory=list)
     # Sector classification for grouped reporting (e.g. "Steel", "Petrochemical")
     sector_group: str = ""
+    # Sector-level allocation: participant's share of their sector's free pool (0–1)
+    sector_allocation_share: float = 0.0
     # Indirect / Scope 2 emissions — electricity-based
     # indirect_emissions = electricity_consumption × grid_emission_factor
     # scope2_cbam_coverage: fraction of indirect embedded emissions covered by CBAM (0 = not covered)

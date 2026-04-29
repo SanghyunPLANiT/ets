@@ -9,6 +9,15 @@ def blank_config() -> dict[str, Any]:
     return {"scenarios": [blank_scenario()]}
 
 
+def blank_sector() -> dict[str, Any]:
+    return {
+        "name": "New Sector",
+        "cap_trajectory": {},
+        "auction_share_trajectory": {},
+        "carbon_budget": 0.0,
+    }
+
+
 def blank_scenario() -> dict[str, Any]:
     return {
         "name": "New Scenario",
@@ -24,6 +33,8 @@ def blank_scenario() -> dict[str, Any]:
         "cap_trajectory": {},            # auto-declining total_cap
         "price_floor_trajectory": {},    # rising price floor (MSR / carbon floor)
         "price_ceiling_trajectory": {},  # declining/rising price ceiling
+        # ── Sector-level allocation ──────────────────────────────────────────
+        "sectors": [],
         # ── MSR settings ────────────────────────────────────────────────────
         **MSR_DEFAULTS,
         # ── Solver / model settings (all user-overridable) ──────────────────
@@ -86,6 +97,7 @@ def blank_participant() -> dict[str, Any]:
         "cbam_coverage_ratio": 1.0,
         "cbam_jurisdictions": [],   # [{name, export_share, coverage_ratio}] overrides single fields
         "sector_group": "",
+        "sector_allocation_share": 0.0,
         # Scope 2 / indirect emissions
         "electricity_consumption": 0.0,  # MWh
         "grid_emission_factor": 0.0,     # tCO2/MWh

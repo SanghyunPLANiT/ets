@@ -172,6 +172,14 @@ def normalize_participant(raw_participant: dict[str, Any]) -> dict[str, Any]:
         if isinstance(j, dict)
     ]
     participant["sector_group"] = str(participant.get("sector_group") or "")
+    try:
+        participant["sector_allocation_share"] = float(participant.get("sector_allocation_share") or 0.0)
+    except (TypeError, ValueError):
+        participant["sector_allocation_share"] = 0.0
+    if not 0.0 <= participant["sector_allocation_share"] <= 1.0:
+        raise ValueError(
+            f"Participant '{participant['name']}' sector_allocation_share must be between 0 and 1."
+        )
     # Scope 2 / indirect emissions
     for s2_field in ("electricity_consumption", "grid_emission_factor", "scope2_cbam_coverage"):
         try:

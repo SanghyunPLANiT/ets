@@ -21,6 +21,7 @@ from .templates import (
     blank_year_config,
     blank_participant,
     blank_technology_option,
+    blank_sector,
 )
 
 __all__ = [
@@ -44,4 +45,5 @@ __all__ = [
     "blank_year_config",
     "blank_participant",
     "blank_technology_option",
+    "blank_sector",
 ]
