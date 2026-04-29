@@ -22,7 +22,6 @@ export function Editor({
   const [wizardReplacements, setWizardReplacements] = React.useState([]);
   const [wizardMode, setWizardMode] = React.useState("moderate");
   const [seriesEditor, setSeriesEditor] = React.useState(null);
-  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const participant = workingYear.participants?.[selectedParticipantIndex] || null;
   const technologyOptions = participant?.technology_options || [];
   const selectedTechnology = technologyOptions[selectedTechnologyIndex] || null;
@@ -996,6 +995,36 @@ export function Editor({
                   </div>
                   <span className="approach-params-hint">Mt CO₂e allowed this year. Set across all years using the pathway chart.</span>
                 </label>
+                <div className="approach-params-tuning-label">Solver tuning</div>
+                <div className="solver-settings-grid">
+                  <label>
+                    <span className="ekey">Max bisection iterations <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Iterations to find shadow price λ. Default: 80</span>
+                    {numInput(
+                      workingScenario.solver_hotelling_max_bisection_iters ?? 80,
+                      (v) => updateScenario({ solver_hotelling_max_bisection_iters: Math.max(1, Math.round(v)) }),
+                      1, 1
+                    )}
+                  </label>
+                  <label>
+                    <span className="ekey">Max bracket expansions <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Attempts to bracket λ before fallback. Default: 20</span>
+                    {numInput(
+                      workingScenario.solver_hotelling_max_lambda_expansions ?? 20,
+                      (v) => updateScenario({ solver_hotelling_max_lambda_expansions: Math.max(1, Math.round(v)) }),
+                      1, 1
+                    )}
+                  </label>
+                  <label>
+                    <span className="ekey">Emissions convergence tolerance <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Relative tolerance on cumulative emissions. Default: 0.0001</span>
+                    {numInput(
+                      workingScenario.solver_hotelling_convergence_tol ?? 0.0001,
+                      (v) => updateScenario({ solver_hotelling_convergence_tol: Math.max(1e-9, v) }),
+                      0.00001, 1e-9
+                    )}
+                  </label>
+                </div>
               </div>
             )}
 
@@ -1008,35 +1037,159 @@ export function Editor({
                     Select which participants behave strategically (internalize price impact). Leave all unchecked to make everyone strategic.
                   </span>
                 </div>
-                <div className="approach-nash-participants">
-                  {(workingYear.participants || []).length === 0 && (
-                    <span className="muted" style={{ fontSize: 12 }}>No participants yet — add them in Step 3.</span>
-                  )}
-                  {(workingYear.participants || []).map((p) => {
-                    const isStrategic = !(workingScenario.nash_strategic_participants?.length) ||
-                      (workingScenario.nash_strategic_participants || []).includes(p.name);
+                {(workingYear.participants || []).length === 0 && (
+                  <span className="muted" style={{ fontSize: 12 }}>No participants yet — add them in Step 3.</span>
+                )}
+                {(() => {
+                  const allNames = (workingYear.participants || []).map((x) => x.name);
+                  const current = workingScenario.nash_strategic_participants || [];
+                  const effective = current.length === 0 ? allNames : current;
+
+                  // Group by sector_group
+                  const bySector = {};
+                  (workingYear.participants || []).forEach((p) => {
+                    const sector = p.sector_group || "";
+                    if (!bySector[sector]) bySector[sector] = [];
+                    bySector[sector].push(p);
+                  });
+
+                  // Sort keys alphabetically, empty string last
+                  const sectorKeys = Object.keys(bySector).sort((a, b) => {
+                    if (a === "" && b !== "") return 1;
+                    if (a !== "" && b === "") return -1;
+                    return a.localeCompare(b);
+                  });
+
+                  return sectorKeys.map((sector) => {
+                    const sectorParticipants = bySector[sector];
+                    const sectorNames = sectorParticipants.map((p) => p.name);
+                    const allSectorStrategic = sectorNames.every((n) => effective.includes(n));
+
                     return (
-                      <label key={p.name} className="approach-nash-check">
-                        <input
-                          type="checkbox"
-                          checked={isStrategic}
-                          onChange={(e) => {
-                            const current = workingScenario.nash_strategic_participants || [];
-                            const allNames = (workingYear.participants || []).map((x) => x.name);
-                            const base = current.length === 0 ? allNames : current;
-                            const next = e.target.checked
-                              ? [...new Set([...base, p.name])]
-                              : base.filter((n) => n !== p.name);
-                            updateScenario({ nash_strategic_participants: next });
-                          }}
-                        />
-                        <span>{p.name}</span>
-                      </label>
+                      <div key={sector || "__ungrouped__"} className="approach-nash-sector-group">
+                        <div className="approach-nash-sector-header">
+                          <span className="approach-nash-sector-label">
+                            {sector || "Ungrouped"}
+                          </span>
+                          <button
+                            type="button"
+                            className="approach-nash-sector-toggle"
+                            onClick={() => {
+                              if (allSectorStrategic) {
+                                const next = effective.filter((n) => !sectorNames.includes(n));
+                                updateScenario({ nash_strategic_participants: next });
+                              } else {
+                                const next = [...new Set([...effective, ...sectorNames])];
+                                updateScenario({ nash_strategic_participants: next });
+                              }
+                            }}
+                          >
+                            {allSectorStrategic ? "Deselect all" : "Select all"}
+                          </button>
+                        </div>
+                        <div className="approach-nash-participants">
+                          {sectorParticipants.map((p) => {
+                            const isStrategic = effective.includes(p.name);
+                            return (
+                              <label key={p.name} className="approach-nash-check">
+                                <input
+                                  type="checkbox"
+                                  checked={isStrategic}
+                                  onChange={(e) => {
+                                    const base = current.length === 0 ? allNames : current;
+                                    const next = e.target.checked
+                                      ? [...new Set([...base, p.name])]
+                                      : base.filter((n) => n !== p.name);
+                                    updateScenario({ nash_strategic_participants: next });
+                                  }}
+                                />
+                                <span>{p.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
                     );
-                  })}
+                  });
+                })()}
+                <div className="approach-params-tuning-label">Solver tuning</div>
+                <div className="solver-settings-grid">
+                  <label>
+                    <span className="ekey">Price step ($/t) <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Finite-difference step for estimating market power (dP/dQ). Default: 0.5</span>
+                    {numInput(
+                      workingScenario.solver_nash_price_step ?? 0.5,
+                      (v) => updateScenario({ solver_nash_price_step: Math.max(1e-4, v) }),
+                      0.1, 1e-4
+                    )}
+                  </label>
+                  <label>
+                    <span className="ekey">Max best-response iterations <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Nash convergence loop limit. Default: 120</span>
+                    {numInput(
+                      workingScenario.solver_nash_max_iters ?? 120,
+                      (v) => updateScenario({ solver_nash_max_iters: Math.max(1, Math.round(v)) }),
+                      1, 1
+                    )}
+                  </label>
+                  <label>
+                    <span className="ekey">Abatement convergence tolerance <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Max abatement change across participants per iteration. Default: 0.001</span>
+                    {numInput(
+                      workingScenario.solver_nash_convergence_tol ?? 0.001,
+                      (v) => updateScenario({ solver_nash_convergence_tol: Math.max(1e-8, v) }),
+                      0.0001, 1e-8
+                    )}
+                  </label>
                 </div>
               </div>
             )}
+
+            {/* Competitive approach-params (always shown when competitive or all) */}
+            {(workingScenario.model_approach === "competitive" || workingScenario.model_approach === "all" || !workingScenario.model_approach) && (
+              <div className="approach-params">
+                <div className="approach-params-tuning-label">Solver tuning</div>
+                <div className="solver-settings-grid">
+                  <label>
+                    <span className="ekey">Max iterations <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Perfect-foresight convergence loop. Default: 25</span>
+                    {numInput(
+                      workingScenario.solver_competitive_max_iters ?? 25,
+                      (v) => updateScenario({ solver_competitive_max_iters: Math.max(1, Math.round(v)) }),
+                      1, 1
+                    )}
+                  </label>
+                  <label>
+                    <span className="ekey">Price convergence tolerance <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Max allowed price delta between iterations. Default: 0.001</span>
+                    {numInput(
+                      workingScenario.solver_competitive_tolerance ?? 0.001,
+                      (v) => updateScenario({ solver_competitive_tolerance: Math.max(1e-8, v) }),
+                      0.0001, 1e-8
+                    )}
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* Market clearing — always visible */}
+            <div className="approach-market-clearing">
+              <span className="approach-params-tuning-label" style={{ borderTop: "none", paddingTop: 0 }}>Market clearing</span>
+              <div className="solver-settings-grid">
+                <label>
+                  <span className="ekey">Penalty price multiplier <span className="field-flag optional">optional</span></span>
+                  <span className="solver-settings-desc">
+                    Auto price-ceiling = max penalty price × this factor.
+                    Only used when no explicit price ceiling is set. Default: 1.25
+                  </span>
+                  {numInput(
+                    workingScenario.solver_penalty_price_multiplier ?? 1.25,
+                    (v) => updateScenario({ solver_penalty_price_multiplier: Math.max(1.0, v) }),
+                    0.05, 1.0
+                  )}
+                </label>
+              </div>
+            </div>
           </div>
 
           {/* ── Free allocation trajectories ─────────────────────────────── */}
@@ -1371,135 +1524,6 @@ export function Editor({
             )}
           </div>
 
-          {/* ── Advanced Solver Settings ─────────────────────────────────── */}
-          <div className="solver-settings-accordion">
-            <button
-              type="button"
-              className={"solver-settings-toggle" + (settingsOpen ? " open" : "")}
-              onClick={() => setSettingsOpen((v) => !v)}
-            >
-              <span className="solver-settings-toggle-label">Advanced solver settings</span>
-              <span className="solver-settings-toggle-caret">{settingsOpen ? "▲" : "▼"}</span>
-            </button>
-
-            {settingsOpen && (
-              <div className="solver-settings-body">
-                <p className="solver-settings-hint">
-                  These parameters control convergence, iteration limits, and market
-                  mechanics. Defaults work for most scenarios — adjust only if you
-                  need finer control or encounter convergence warnings.
-                </p>
-
-                <div className="solver-settings-group">
-                  <div className="solver-settings-group-label">Competitive solver</div>
-                  <div className="solver-settings-grid">
-                    <label>
-                      <span className="ekey">Max iterations <span className="field-flag optional">optional</span></span>
-                      <span className="solver-settings-desc">Perfect-foresight convergence loop. Default: 25</span>
-                      {numInput(
-                        workingScenario.solver_competitive_max_iters ?? 25,
-                        (v) => updateScenario({ solver_competitive_max_iters: Math.max(1, Math.round(v)) }),
-                        1, 1
-                      )}
-                    </label>
-                    <label>
-                      <span className="ekey">Price convergence tolerance <span className="field-flag optional">optional</span></span>
-                      <span className="solver-settings-desc">Max allowed price delta between iterations. Default: 0.001</span>
-                      {numInput(
-                        workingScenario.solver_competitive_tolerance ?? 0.001,
-                        (v) => updateScenario({ solver_competitive_tolerance: Math.max(1e-8, v) }),
-                        0.0001, 1e-8
-                      )}
-                    </label>
-                  </div>
-                </div>
-
-                <div className="solver-settings-group">
-                  <div className="solver-settings-group-label">Hotelling solver</div>
-                  <div className="solver-settings-grid">
-                    <label>
-                      <span className="ekey">Max bisection iterations <span className="field-flag optional">optional</span></span>
-                      <span className="solver-settings-desc">Iterations to find shadow price λ. Default: 80</span>
-                      {numInput(
-                        workingScenario.solver_hotelling_max_bisection_iters ?? 80,
-                        (v) => updateScenario({ solver_hotelling_max_bisection_iters: Math.max(1, Math.round(v)) }),
-                        1, 1
-                      )}
-                    </label>
-                    <label>
-                      <span className="ekey">Max bracket expansions <span className="field-flag optional">optional</span></span>
-                      <span className="solver-settings-desc">Attempts to bracket λ before fallback. Default: 20</span>
-                      {numInput(
-                        workingScenario.solver_hotelling_max_lambda_expansions ?? 20,
-                        (v) => updateScenario({ solver_hotelling_max_lambda_expansions: Math.max(1, Math.round(v)) }),
-                        1, 1
-                      )}
-                    </label>
-                    <label>
-                      <span className="ekey">Emissions convergence tolerance <span className="field-flag optional">optional</span></span>
-                      <span className="solver-settings-desc">Relative tolerance on cumulative emissions. Default: 0.0001</span>
-                      {numInput(
-                        workingScenario.solver_hotelling_convergence_tol ?? 0.0001,
-                        (v) => updateScenario({ solver_hotelling_convergence_tol: Math.max(1e-9, v) }),
-                        0.00001, 1e-9
-                      )}
-                    </label>
-                  </div>
-                </div>
-
-                <div className="solver-settings-group">
-                  <div className="solver-settings-group-label">Nash-Cournot solver</div>
-                  <div className="solver-settings-grid">
-                    <label>
-                      <span className="ekey">Price step ($/t) <span className="field-flag optional">optional</span></span>
-                      <span className="solver-settings-desc">Finite-difference step for estimating market power (dP/dQ). Default: 0.5</span>
-                      {numInput(
-                        workingScenario.solver_nash_price_step ?? 0.5,
-                        (v) => updateScenario({ solver_nash_price_step: Math.max(1e-4, v) }),
-                        0.1, 1e-4
-                      )}
-                    </label>
-                    <label>
-                      <span className="ekey">Max best-response iterations <span className="field-flag optional">optional</span></span>
-                      <span className="solver-settings-desc">Nash convergence loop limit. Default: 120</span>
-                      {numInput(
-                        workingScenario.solver_nash_max_iters ?? 120,
-                        (v) => updateScenario({ solver_nash_max_iters: Math.max(1, Math.round(v)) }),
-                        1, 1
-                      )}
-                    </label>
-                    <label>
-                      <span className="ekey">Abatement convergence tolerance <span className="field-flag optional">optional</span></span>
-                      <span className="solver-settings-desc">Max abatement change across participants per iteration. Default: 0.001</span>
-                      {numInput(
-                        workingScenario.solver_nash_convergence_tol ?? 0.001,
-                        (v) => updateScenario({ solver_nash_convergence_tol: Math.max(1e-8, v) }),
-                        0.0001, 1e-8
-                      )}
-                    </label>
-                  </div>
-                </div>
-
-                <div className="solver-settings-group">
-                  <div className="solver-settings-group-label">Market clearing</div>
-                  <div className="solver-settings-grid">
-                    <label>
-                      <span className="ekey">Penalty price multiplier <span className="field-flag optional">optional</span></span>
-                      <span className="solver-settings-desc">
-                        Auto price-ceiling = max penalty price × this factor.
-                        Only used when no explicit price ceiling is set. Default: 1.25
-                      </span>
-                      {numInput(
-                        workingScenario.solver_penalty_price_multiplier ?? 1.25,
-                        (v) => updateScenario({ solver_penalty_price_multiplier: Math.max(1.0, v) }),
-                        0.05, 1.0
-                      )}
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
         </section>
       )}
 
