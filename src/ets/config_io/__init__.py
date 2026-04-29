@@ -1,6 +1,5 @@
-# Backward-compatibility shim — re-exports from the config_io sub-package.
-from .config_io import (
-    normalize_year,
+from .normalize import normalize_year
+from .builder import (
     build_market_from_year,
     build_markets_from_config,
     build_markets_from_file,
@@ -12,14 +11,16 @@ from .config_io import (
     normalize_technology_option,
     build_participant,
     build_technology_option,
+    _interp_value,
+    _interp_ratio,
+    _normalize_trajectory,
+)
+from .templates import (
     blank_config,
     blank_scenario,
     blank_year_config,
     blank_participant,
     blank_technology_option,
-    _interp_value,
-    _interp_ratio,
-    _normalize_trajectory,
 )
 
 __all__ = [
@@ -35,12 +36,12 @@ __all__ = [
     "normalize_technology_option",
     "build_participant",
     "build_technology_option",
+    "_interp_value",
+    "_interp_ratio",
+    "_normalize_trajectory",
     "blank_config",
     "blank_scenario",
     "blank_year_config",
     "blank_participant",
     "blank_technology_option",
-    "_interp_value",
-    "_interp_ratio",
-    "_normalize_trajectory",
 ]
