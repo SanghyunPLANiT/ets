@@ -2296,6 +2296,53 @@ html[data-chart="terminal"][data-theme="light"] { --panel: #fafaf7; --bg: #eeede
 .approach-nash-check input[type="checkbox"] {
   accent-color: var(--accent);
 }
+.approach-nash-sector-group {
+  margin-bottom: 12px;
+}
+.approach-nash-sector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+}
+.approach-nash-sector-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.approach-nash-sector-toggle {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+  transition: border-color 0.12s, color 0.12s;
+}
+.approach-nash-sector-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.approach-params-tuning-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  padding-top: 10px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+.approach-market-clearing {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
 @media (max-width: 800px) {
   .approach-selector-options { grid-template-columns: 1fr 1fr; }
 }
@@ -2615,6 +2662,50 @@ html[data-chart="terminal"][data-theme="light"] { --panel: #fafaf7; --bg: #eeede
   letter-spacing: 0.05em;
   color: var(--muted);
 }
+/* ── Sector panel ────────────────────────────────────────────────────────── */
+.sector-panel {
+  margin: 12px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.sector-panel-head {
+  padding: 8px 12px 6px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sector-panel-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.sector-list {
+  background: var(--bg);
+}
+.sector-row {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.sector-row:last-child { border-bottom: none; }
+.sector-row-fields {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.sector-row-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.sector-row-fields input { width: 100%; }
+
 .scope2-panel .builder-form-grid {
   padding: 10px 12px 14px;
   background: var(--bg);
