@@ -26,14 +26,81 @@ A config must contain at least one scenario. Multiple scenarios are run independ
 ```json
 {
   "name": "Aggressive Decarbonisation",
+  "model_approach": "competitive",
+  "discount_rate": 0.04,
+  "risk_premium": 0.02,
+  "free_allocation_trajectories": [
+    { "participant_name": "Steel", "start_year": "2026", "end_year": "2035",
+      "start_ratio": 0.9, "end_ratio": 0.0 }
+  ],
+  "cap_trajectory": { "start_year": "2026", "end_year": "2035",
+    "start_value": 600.0, "end_value": 300.0 },
+  "price_floor_trajectory": { "start_year": "2026", "end_year": "2035",
+    "start_value": 10.0, "end_value": 40.0 },
+  "price_ceiling_trajectory": {},
   "years": [ { ...year }, { ...year } ]
 }
 ```
 
-| Field | Type | Required | Notes |
+| Field | Type | Default | Notes |
 |---|---|---|---|
-| `name` | string | ✅ | Non-empty. Used as the scenario identifier in all results. |
-| `years` | array of year objects | ✅ | At least one year required. Sorted chronologically before simulation. |
+| `name` | string | — | ✅ Required. Non-empty. Used as scenario identifier in all results. |
+| `model_approach` | `"competitive"` \| `"hotelling"` \| `"nash_cournot"` \| `"all"` | `"competitive"` | Price-path mechanism. See [Algorithm Overview](algorithm-overview.md). |
+| `discount_rate` | float | `0.04` | Annual discount rate `r` used in Hotelling path formula. |
+| `risk_premium` | float | `0.0` | Policy uncertainty premium `ρ`. Hotelling price path becomes `P(t) = λ·(1+r+ρ)^(t−t₀)`. Set > 0 to calibrate against observed prices rising faster than the risk-free rate. |
+| `years` | array of year objects | — | ✅ Required. At least one year. |
+| `free_allocation_trajectories` | array | `[]` | Auto-interpolates `free_allocation_ratio` per participant across years. See [Trajectories](#trajectories). |
+| `cap_trajectory` | object \| `{}` | `{}` | Auto-declining `total_cap`. Empty object = disabled. See [Trajectories](#trajectories). |
+| `price_floor_trajectory` | object \| `{}` | `{}` | Rising/changing price floor (`price_lower_bound`). |
+| `price_ceiling_trajectory` | object \| `{}` | `{}` | Rising/changing price ceiling (`price_upper_bound`). |
+| `msr_enabled` | bool | `false` | Enable Market Stability Reserve. |
+| `nash_strategic_participants` | array of strings | `[]` | Participant names treated as strategic in Nash-Cournot mode. |
+
+---
+
+## Trajectories
+
+Trajectories allow a single scenario-level rule to override per-year values without repeating them in every year config. They use **linear interpolation** between a start and end point.
+
+### `free_allocation_trajectories`
+
+An array of per-participant phase-out rules:
+
+```json
+"free_allocation_trajectories": [
+  {
+    "participant_name": "Steel",
+    "start_year": "2026",
+    "end_year": "2035",
+    "start_ratio": 0.9,
+    "end_ratio": 0.0
+  }
+]
+```
+
+The interpolated ratio overrides `free_allocation_ratio` in the year config for the named participant. Per-year values are still required in the JSON (for compatibility) but are overridden when a matching trajectory exists.
+
+### `cap_trajectory`, `price_floor_trajectory`, `price_ceiling_trajectory`
+
+Single-object (not an array) trajectory for the market-level parameters:
+
+```json
+"cap_trajectory": {
+  "start_year": "2026",
+  "end_year": "2035",
+  "start_value": 600.0,
+  "end_value": 300.0
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `start_year` | ✅ | Year label matching `year` field in year configs |
+| `end_year` | ✅ | End year label |
+| `start_value` | ✅ | Value at `start_year` |
+| `end_value` | ✅ | Value at `end_year` |
+
+Empty object `{}` disables the trajectory. Intermediate years are linearly interpolated. Years before `start_year` receive `start_value`; years after `end_year` receive `end_value`.
 
 ---
 
@@ -59,6 +126,9 @@ One year object configures a complete market period (e.g. 2030, 2035).
   "borrowing_limit": 0.0,
   "expectation_rule": "next_year_baseline",
   "manual_expected_price": 0.0,
+  "eua_price": 72.0,
+  "eua_prices": { "EU": 72.0, "UK": 58.0 },
+  "eua_price_ensemble": { "EC": 70.0, "Enerdata": 75.0, "BNEF": 82.0 },
   "participants": [ { ...participant }, ... ]
 }
 ```
@@ -139,6 +209,9 @@ See [Multi-Year Simulation](multi-year-simulation.md) for full banking/borrowing
 |---|---|---|---|---|
 | `expectation_rule` | string | `"next_year_baseline"` | One of four allowed values | How participants form beliefs about next year's price. |
 | `manual_expected_price` | float ≥ 0 | `0.0` | ≥ 0 | Used only when `expectation_rule = "manual"`. |
+| `eua_price` | float ≥ 0 | `0.0` | ≥ 0 | EU ETS allowance reference price (€/t) for CBAM liability calculation. Used as fallback when `eua_prices` is empty or a jurisdiction has no entry. |
+| `eua_prices` | object | `{}` | — | Per-jurisdiction EUA prices, e.g. `{"EU": 72.0, "UK": 58.0}`. Looked up by jurisdiction name when computing multi-jurisdiction CBAM liability. |
+| `eua_price_ensemble` | object | `{}` | — | Named EUA forecast scenarios, e.g. `{"EC": 70.0, "Enerdata": 75.0, "BNEF": 82.0}`. Generates one `CBAM Liability ({source})` column per entry in participant results — enables fan-chart / sensitivity analysis without duplicating scenarios. |
 
 **Allowed `expectation_rule` values:**
 
@@ -156,7 +229,7 @@ See [Multi-Year Simulation](multi-year-simulation.md) for full banking/borrowing
 ```json
 {
   "name": "Steel Plant A",
-  "sector": "Steel",
+  "sector_group": "Heavy Industry",
   "initial_emissions": 100.0,
   "free_allocation_ratio": 0.9,
   "penalty_price": 150.0,
@@ -169,6 +242,15 @@ See [Multi-Year Simulation](multi-year-simulation.md) for full banking/borrowing
     {"amount": 8, "marginal_cost": 55},
     {"amount": 8, "marginal_cost": 110}
   ],
+  "cbam_export_share": 0.0,
+  "cbam_coverage_ratio": 1.0,
+  "cbam_jurisdictions": [
+    {"name": "EU", "export_share": 0.35, "coverage_ratio": 1.0},
+    {"name": "UK", "export_share": 0.08, "coverage_ratio": 1.0}
+  ],
+  "electricity_consumption": 500.0,
+  "grid_emission_factor": 0.45,
+  "scope2_cbam_coverage": 0.0,
   "technology_options": [ { ...technology_option }, ... ]
 }
 ```
@@ -178,11 +260,48 @@ See [Multi-Year Simulation](multi-year-simulation.md) for full banking/borrowing
 | Field | Type | Default | Validation | Description |
 |---|---|---|---|---|
 | `name` | string | `"New Participant"` | Non-empty, unique within year | Participant identifier. Used as key in all result tables. |
-| `sector` | string | `"Other"` | — | Display label for grouping in charts. Not used in calculations. |
+| `sector_group` | string | `""` | — | Sector label for grouped reporting. Participants with the same `sector_group` are aggregated in `scenario_summary()` — e.g. `"Steel"`, `"Petrochemical"`, `"Power"`. |
 | `initial_emissions` | float ≥ 0 | `0.0` | ≥ 0 | Gross emissions baseline (Mt CO₂e) before any abatement. Determines compliance obligation. |
-| `free_allocation_ratio` | float [0, 1] | `0.0` | 0–1 | Share of initial emissions covered by free allowances. `1.0` = fully covered for free. |
-| `penalty_price` | float > 0 | `100.0` | > 0 | Fine per tonne of uncovered emissions. Acts as a compliance ceiling — no participant buys above this price. |
+| `free_allocation_ratio` | float [0, 1] | `0.0` | 0–1 | Share of initial emissions covered by free allowances. `1.0` = fully covered for free. Can be overridden by `free_allocation_trajectories` at the scenario level. |
+| `penalty_price` | float > 0 | `100.0` | > 0 | Fine per tonne of uncovered emissions. Acts as a compliance ceiling — no participant buys above this price. Must be ≥ `price_lower_bound` for the year. |
 | `abatement_type` | `"linear"` \| `"piecewise"` \| `"threshold"` | `"linear"` | One of three values | Selects which MAC model to use. |
+
+### CBAM exposure fields
+
+| Field | Type | Default | Validation | Description |
+|---|---|---|---|---|
+| `cbam_export_share` | float [0, 1] | `0.0` | 0–1 | Fraction of activity exported to CBAM-covered markets (EU shorthand). Ignored when `cbam_jurisdictions` is non-empty. |
+| `cbam_coverage_ratio` | float [0, 1] | `1.0` | 0–1 | Fraction of exported embedded emissions within CBAM scope (EU shorthand). Ignored when `cbam_jurisdictions` is non-empty. |
+| `cbam_jurisdictions` | array | `[]` | — | Multi-jurisdiction CBAM. When non-empty, overrides the single-field shorthand. Each entry: `{"name": str, "export_share": float, "coverage_ratio": float}`. Optionally `"reference_price": float` for a per-jurisdiction price override taking precedence over `eua_prices`. |
+
+**Multi-jurisdiction CBAM example:**
+
+```json
+"cbam_jurisdictions": [
+  {"name": "EU", "export_share": 0.35, "coverage_ratio": 1.0},
+  {"name": "UK", "export_share": 0.08, "coverage_ratio": 1.0, "reference_price": 55.0}
+]
+```
+
+This generates `CBAM Liability (EU)`, `CBAM Gap (EU)`, `CBAM Liability (UK)`, `CBAM Gap (UK)` columns in participant results. The year's `eua_prices` dict is used to look up the reference price per jurisdiction unless overridden.
+
+### Scope 2 / indirect emissions fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `electricity_consumption` | float ≥ 0 | `0.0` | Electricity consumed (MWh or consistent unit). |
+| `grid_emission_factor` | float ≥ 0 | `0.0` | Grid emission intensity (tCO₂/MWh). Korean grid average ≈ 0.45 tCO₂/MWh. |
+| `scope2_cbam_coverage` | float [0, 1] | `0.0` | Fraction of indirect emissions in CBAM scope. `0` = Scope 2 not covered (current default); `1` = fully covered (6-month extension scenario). |
+
+**Derived fields:**
+
+```
+indirect_emissions         = electricity_consumption × grid_emission_factor
+scope2_cbam_liability      = max(0, eua_price − kau_price) × indirect_emissions
+                             × cbam_export_share × scope2_cbam_coverage
+```
+
+These appear in participant results as `Indirect Emissions` and `Scope 2 CBAM Liability` columns.
 
 ### Abatement model fields (mutually exclusive groups)
 
@@ -276,27 +395,32 @@ These fields are not in the config JSON but are computed during market construct
 
 ## Validation summary
 
-All validation runs in `scenarios.py` during `normalize_config()`. Errors raise `ValueError` immediately before any simulation begins.
+Validation runs at two points. Most checks fire in `scenarios.py` during `normalize_config()` — before any market objects are built. Cap-consistency checks fire in `build_market_from_year()` — after trajectory overrides are applied, so the effective post-override values are validated.
 
-| Rule | Error message pattern |
-|---|---|
-| Missing `scenarios` list | `"Config must contain a 'scenarios' list."` |
-| Empty scenario name | `"Each scenario must have a non-empty name."` |
-| Missing or empty `years` | `"Scenario '...' must contain a non-empty 'years' list."` |
-| Empty year label | `"Each yearly configuration must have a non-empty year label."` |
-| Invalid `auction_mode` | `"Year '...' has invalid auction_mode '...'"` |
-| `price_upper_bound ≤ price_lower_bound` | `"Year '...' must have price_upper_bound greater than price_lower_bound."` |
-| `minimum_bid_coverage` outside [0, 1] | `"Year '...' minimum_bid_coverage must be between 0 and 1."` |
-| Negative `auction_reserve_price` | `"Year '...' auction_reserve_price must be non-negative."` |
-| Invalid `unsold_treatment` | `"Year '...' unsold_treatment must be one of reserve, cancel, carry_forward."` |
-| Invalid `expectation_rule` | `"Year '...' expectation_rule must be one of ..."` |
-| Empty participant name | `"Each participant must have a non-empty name."` |
-| Invalid `abatement_type` | `"Participant '...' has invalid abatement_type '...'"` |
-| Piecewise with no blocks | `"Participant '...' piecewise abatement requires mac_blocks."` |
-| MAC blocks out of order | `"Participant '...' mac_blocks must be ordered by non-decreasing marginal_cost."` |
-| Supply exceeds cap | `"Inconsistent cap setup: free allocations plus auctioned, reserved, and cancelled allowances cannot exceed total_cap."` |
-| Negative auction supply | `"Scenario '...' year '...' implies negative auction offered."` |
-| `max_activity_share` sum < 1 | `"technology max_activity_share values sum to less than 1.0."` |
+All errors raise `ValueError` with a descriptive message including the scenario/year/participant name.
+
+| Rule | Where | Error message pattern |
+|---|---|---|
+| Missing `scenarios` list | normalize | `"Config must contain a 'scenarios' list."` |
+| Empty scenario name | normalize | `"Each scenario must have a non-empty name."` |
+| Missing or empty `years` | normalize | `"Scenario '...' must contain a non-empty 'years' list."` |
+| Empty year label | normalize | `"Each yearly configuration must have a non-empty year label."` |
+| Invalid `auction_mode` | normalize | `"Year '...' has invalid auction_mode '...'"` |
+| `price_upper_bound ≤ price_lower_bound` | normalize | `"Year '...' must have price_upper_bound greater than price_lower_bound."` |
+| `minimum_bid_coverage` outside [0, 1] | normalize | `"Year '...' minimum_bid_coverage must be between 0 and 1."` |
+| Negative `auction_reserve_price` | normalize | `"Year '...' auction_reserve_price must be non-negative."` |
+| Invalid `unsold_treatment` | normalize | `"Year '...' unsold_treatment must be one of reserve, cancel, carry_forward."` |
+| Invalid `expectation_rule` | normalize | `"Year '...' expectation_rule must be one of ..."` |
+| **Duplicate participant names** | normalize | `"Year '...' has duplicate participant name(s): [...]."` |
+| **Penalty price below price floor** | normalize | `"Year '...', participant '...': penalty_price (...) is below price_lower_bound (...). Participants would always pay penalty instead of complying."` |
+| Empty participant name | normalize | `"Each participant must have a non-empty name."` |
+| Invalid `abatement_type` | normalize | `"Participant '...' has invalid abatement_type '...'"` |
+| Piecewise with no blocks | normalize | `"Participant '...' piecewise abatement requires mac_blocks."` |
+| MAC blocks out of order | normalize | `"Participant '...' mac_blocks must be ordered by non-decreasing marginal_cost."` |
+| `scope2_cbam_coverage` outside [0, 1] | normalize | `"Participant '...' scope2_cbam_coverage must be between 0 and 1."` |
+| **Supply exceeds cap (post-trajectory)** | build | `"Scenario '...' year '...': allowance supply (...) exceeds total_cap (...). Reduce auction_offered, free_allocation_ratio, or increase total_cap."` |
+| Negative auction supply | build | `"Scenario '...' year '...' implies negative auction offered."` |
+| `max_activity_share` sum < 1 | build | `"technology max_activity_share values sum to less than 1.0."` |
 
 ---
 

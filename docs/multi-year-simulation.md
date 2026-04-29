@@ -191,10 +191,10 @@ Year    Baseline   Iteration 1   Iteration 2   Converged
 
 ### Theory
 
-The Hotelling Rule (1931) states that for an exhaustible resource in competitive equilibrium, the net price (royalty) must rise at the rate of interest — otherwise owners would rearrange extraction to exploit arbitrage. Applied to carbon allowances:
+The Hotelling Rule (1931) states that for an exhaustible resource in competitive equilibrium, the net price (royalty) must rise at the rate of interest — otherwise owners would rearrange extraction to exploit arbitrage. Applied to carbon allowances, with an optional **risk premium** `ρ` to reflect the extra return required by risk-averse holders:
 
 ```
-P*(t) = λ · (1 + r)^(t − t₀)
+P*(t) = λ · (1 + r + ρ)^(t − t₀)
 ```
 
 If prices rose faster than `r`, participants would bank heavily today, cutting current supply and driving prices up. If prices rose slower, they would front-load compliance, reducing future demand. The Hotelling condition is the no-arbitrage price path consistent with using the allowance budget exactly over the policy horizon.
@@ -216,7 +216,8 @@ If prices rose faster than `r`, participants would bank heavily today, cutting c
 | Field | Role |
 |---|---|
 | `carbon_budget` | Cumulative Mt CO₂e limit across all years in the scenario |
-| `discount_rate` | Annual discount rate `r` used in `(1+r)^t` |
+| `discount_rate` | Annual discount rate `r` used in `(1+r+ρ)^t` |
+| `risk_premium` | Additional return `ρ` steepening the price path (default 0.0) |
 | `solver_hotelling_max_bisection_iters` | Maximum bisection steps (default 80) |
 | `solver_hotelling_max_lambda_expansions` | Bracket-expansion attempts (default 20) |
 | `solver_hotelling_convergence_tol` | Relative tolerance on cumulative emissions (default 1e-4) |
@@ -277,6 +278,89 @@ Nash-Cournot produces **higher equilibrium prices and lower abatement** than the
 
 ---
 
+## Policy trajectories
+
+**Configured at:** scenario level  
+**Applied at:** build time (after per-year config is loaded, before market clearing)
+
+Policy trajectories let you specify smooth, linearly interpolated paths for four scenario-level parameters without setting them individually in every year config. Each trajectory is defined by a start year, end year, start value, and end value.
+
+### Free-allocation phase-out (`free_allocation_trajectories`)
+
+A list of per-participant trajectories. Overrides each participant's `free_allocation_ratio` in years that fall within `[start_year, end_year]`:
+
+```json
+"free_allocation_trajectories": [
+  {
+    "participant_name": "Steel Plant A",
+    "start_year": "2026",
+    "end_year": "2034",
+    "start_ratio": 1.0,
+    "end_ratio": 0.0
+  }
+]
+```
+
+Years before `start_year` use the participant's per-year `free_allocation_ratio`. Years after `end_year` use `end_ratio`. Years between are linearly interpolated.
+
+### Cap trajectory (`cap_trajectory`)
+
+Overrides `total_cap` for years within the trajectory window:
+
+```json
+"cap_trajectory": {
+  "start_year": "2026",
+  "end_year": "2035",
+  "start_value": 500.0,
+  "end_value": 300.0
+}
+```
+
+This allows a smoothly declining cap without specifying `total_cap` in each year config.
+
+### Price floor trajectory (`price_floor_trajectory`)
+
+Overrides `price_lower_bound` for years within the window:
+
+```json
+"price_floor_trajectory": {
+  "start_year": "2026",
+  "end_year": "2035",
+  "start_value": 15.0,
+  "end_value": 50.0
+}
+```
+
+### Price ceiling trajectory (`price_ceiling_trajectory`)
+
+Overrides `price_upper_bound` for years within the window:
+
+```json
+"price_ceiling_trajectory": {
+  "start_year": "2026",
+  "end_year": "2035",
+  "start_value": 150.0,
+  "end_value": 300.0
+}
+```
+
+### Interpolation formula
+
+All four trajectory types use the same linear interpolation:
+
+```
+value(t) = start_value + (end_value − start_value)
+           × (t − start_year) / (end_year − start_year)
+```
+
+Years outside `[start_year, end_year]` are not overridden by the trajectory — those years use their per-year config values as-is.
+
+### Interaction with cap-supply validation
+
+The cap consistency check (`free_allocations + auction_offered + reserved + cancelled ≤ total_cap`) runs **after** trajectories are applied. This means you can safely set `free_allocation_ratio` to a high value in per-year configs while a `free_allocation_trajectory` reduces it at build time — the validator will see the trajectory-adjusted value, not the config value.
+
+---
+
 ## MSR integration
 
 **File:** `src/ets/msr.py`  
@@ -308,16 +392,47 @@ The equilibrium solver (Layer 2) receives `effective_auction` — it has no visi
 
 **Does not affect market clearing.**
 
-CBAM liability is computed after `P*` is determined for each year, using:
+CBAM liability is computed after `P*` is determined for each year. It appears in participant-level outputs as an additional cost item and does not feed back into the clearing equation.
+
+### Single-jurisdiction CBAM
 
 ```
 cbam_liability_i = max(0, eua_price − P*) × residual_emissions_i
                    × cbam_export_share_i × cbam_coverage_ratio_i
 ```
 
-where `eua_price` is set in the year config and `P*` is the domestic equilibrium price from the competitive, Hotelling, or Nash-Cournot solver.
+`eua_price` is set in the year config; `P*` is the domestic equilibrium price from whichever solver was used.
 
-Because CBAM is additive to compliance costs without affecting net allowance demand, it does not feed back into the clearing equation. It appears in participant-level outputs as an additional cost item.
+### Multi-jurisdiction CBAM
+
+When a participant specifies `cbam_jurisdictions`, liability is computed for each jurisdiction separately using the per-jurisdiction `eua_prices[name]` from the year config. Results appear as `CBAM Liability (EU)`, `CBAM Liability (UK)`, etc.
+
+### EUA price ensemble
+
+Setting `eua_price_ensemble` in the year config evaluates CBAM liability under multiple forecast prices simultaneously (e.g. `{"EC": 70.0, "Enerdata": 75.0, "BNEF": 82.0}`). Each source yields its own liability column, allowing side-by-side comparison without re-running the simulation.
+
+### Scope 2 / indirect emissions
+
+Participants with electricity consumption have an additional post-equilibrium liability:
+
+```
+indirect_emissions_i = electricity_consumption_i × grid_emission_factor_i
+
+scope2_cbam_liability_i = max(0, eua_price − P*) × indirect_emissions_i
+                          × scope2_cbam_coverage_i
+```
+
+`Indirect Emissions` and `Scope 2 CBAM Liability` are reported alongside direct CBAM columns. The `scope2_cbam_coverage` field controls what fraction of indirect emissions is subject to the border adjustment.
+
+### Sector-level aggregates
+
+The `scenario_summary` output includes sector-group rows (keyed by `sector_group`) that aggregate across all participants in a sector:
+
+- `{sector} Allowance Buys` — total net allowances bought
+- `{sector} Allowance Cost` — total direct compliance spend
+- `{sector} Auction Revenue Share` — proportional share of total auction revenue (by buy volume)
+- `{sector} Indirect Emissions` — sum of indirect (Scope 2) emissions
+- `{sector} Scope 2 CBAM Liability` — sum of Scope 2 CBAM exposure
 
 ---
 

@@ -46,15 +46,16 @@ Participants are price-takers. Each year, Brent's method finds `P*` such that ag
 
 `model_approach: "hotelling"`
 
-Treats emission allowances as an exhaustible resource. The arbitrage condition (no-profit from intertemporal speculation) requires prices to rise at the discount rate:
+Treats emission allowances as an exhaustible resource. The arbitrage condition (no-profit from intertemporal speculation) requires prices to rise at the discount rate. An optional **risk premium** `ρ` can be added to reflect the extra return required by risk-averse holders:
 
 ```
-P*(t) = λ · (1 + r)^(t − t₀)
+P*(t) = λ · (1 + r + ρ)^(t − t₀)
 ```
 
 where:
 - `λ` is the shadow price (royalty) at the base year `t₀`
 - `r` is the `discount_rate` (default 0.04)
+- `ρ` is the `risk_premium` (default 0.0); steepens the price path without changing its functional form
 - `t` is the year index
 
 `λ` is chosen by **bisection** so that cumulative residual emissions across all years equal the cumulative `carbon_budget`. For each candidate `λ`, each year's market is solved at the pinned Hotelling price (by setting `price_lower_bound = price_upper_bound = P_hotelling(t)` on a market copy). Bisection tightens the bracket until the relative residual on cumulative emissions is within `solver_hotelling_convergence_tol` (default `1e-4`).
@@ -130,25 +131,47 @@ The `MSRState` object carries the `reserve_pool` across years for a single scena
 
 CBAM liability is computed **after** market equilibrium is established — it does not affect the clearing price.
 
-### Formula
+### Single-jurisdiction formula
 
 For each participant with `cbam_export_share > 0`:
 
 ```
-cbam_liability = max(0, eua_price − kau_price) × residual_emissions
+cbam_liability = max(0, eua_price − P*) × residual_emissions
                  × cbam_export_share × cbam_coverage_ratio
 ```
 
 where:
 - `eua_price` is the reference EU ETS price set in the year config
-- `kau_price` is the domestic equilibrium price `P*` found by the solver
-- `residual_emissions` is the participant's post-abatement emissions
+- `P*` is the domestic equilibrium price found by the solver
+- `residual_emissions` is the participant's post-abatement direct emissions
 - `cbam_export_share` is the fraction of output exported to CBAM-covered markets
 - `cbam_coverage_ratio` is the fraction of exported emissions within CBAM scope
 
-**Interpretation:** CBAM imposes a levy on the difference between the importing jurisdiction's carbon price (EUA) and the exporting jurisdiction's domestic price (KAU), applied to the residual emissions of the exported fraction. If the domestic price equals or exceeds the EU price, CBAM liability is zero.
+**Interpretation:** CBAM imposes a levy on the price gap between the importing jurisdiction and the domestic price, applied to the exported residual emissions. If the domestic price equals or exceeds the reference EUA price, CBAM liability is zero.
 
-CBAM appears in participant-level outputs as an additional cost item. It does not feed back into `net_allowances_traded` or the market-clearing equation.
+### Multi-jurisdiction CBAM
+
+When a participant specifies `cbam_jurisdictions` (an array of `{name, export_share, coverage_ratio}` objects), liability is computed independently per jurisdiction using `eua_prices[name]` from the year config. Each jurisdiction produces a separate column in the results (`CBAM Liability (EU)`, `CBAM Liability (UK)`, etc.) and the single-jurisdiction `cbam_export_share` / `cbam_coverage_ratio` fields are ignored.
+
+### EUA price ensemble
+
+Setting `eua_price_ensemble` in the year config (e.g. `{"EC": 70.0, "Enerdata": 75.0, "BNEF": 82.0}`) evaluates CBAM liability under multiple price forecasts simultaneously. Each source produces its own liability column (`CBAM Liability (EC)`, …), enabling direct comparison of CBAM exposure across forecast assumptions.
+
+### Scope 2 / indirect emissions
+
+Participants with `electricity_consumption > 0` and `grid_emission_factor > 0` generate **indirect (Scope 2) emissions**:
+
+```
+indirect_emissions = electricity_consumption × grid_emission_factor
+```
+
+If `scope2_cbam_coverage > 0`, a parallel CBAM liability is computed on these indirect emissions:
+
+```
+scope2_cbam_liability = max(0, eua_price − P*) × indirect_emissions × scope2_cbam_coverage
+```
+
+Both `Indirect Emissions` and `Scope 2 CBAM Liability` appear in participant-level outputs. Like direct CBAM, they do not feed back into `net_allowances_traded` or the market-clearing equation.
 
 ---
 
@@ -186,7 +209,7 @@ run_simulation(config)
     │
     ├─ [hotelling]
     │   ├─ Bisect on λ until cumulative emissions = cumulative carbon_budget
-    │   └─ At each λ: pin each year's price to λ·(1+r)^(t−t₀), run participants
+    │   └─ At each λ: pin each year's price to λ·(1+r+ρ)^(t−t₀), run participants
     │
     └─ [nash_cournot]
         ├─ Initialise from competitive equilibrium
@@ -261,6 +284,32 @@ Four expectation-formation rules govern how participants predict future carbon p
 | Total (competitive, 5 participants, 5 years) | ~18,750 function evaluations | — |
 
 In practice, all three solvers complete in under 1–2 seconds for typical configurations.
+
+---
+
+## Input validation
+
+Config validation runs at two distinct points in the pipeline:
+
+### Config-time validation (`normalize_year`)
+
+Runs when the raw JSON is first parsed, before any trajectories are applied. Raises `ValueError` immediately if:
+
+| Rule | Description |
+|---|---|
+| Duplicate participant names | Two participants in the same year share the same `name` |
+| Penalty below price floor | `penalty_price > 0` and `penalty_price < price_lower_bound` — the penalty is economically incoherent if it is below the floor |
+| `scope2_cbam_coverage` out of range | Must be in `[0, 1]` |
+
+### Build-time validation (`build_market_from_year`)
+
+Runs after policy trajectories have been applied to the year's parameters (cap, floor, ceiling). Raises `ValueError` if:
+
+| Rule | Description |
+|---|---|
+| Supply exceeds cap | `free_allocations + auction_offered + reserved + cancelled > total_cap` when `total_cap > 0` — the sum of allowance components cannot exceed the declared cap |
+
+**Why two stages?** Trajectory overrides are applied at build time, not parse time. Moving the cap-supply check to build time avoids false positives when a `cap_trajectory` or `free_allocation_trajectory` overrides a per-year config value that would otherwise appear to violate the cap.
 
 ---
 

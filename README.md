@@ -11,9 +11,12 @@ A web-based **Emissions Trading System (ETS) simulator** that computes carbon ma
 - Configure a carbon market — cap trajectory, auction design, price bounds, participant abatement curves, technology options, banking/borrowing rules
 - Solve for the equilibrium carbon price in each year using Brent's root-finding method
 - Simulate multi-year pathways with intertemporal banking, borrowing, and four expectation-formation rules including rational expectations (perfect foresight)
-- Model price paths under the **Hotelling Rule** (exhaustible-resource arbitrage) or **Nash-Cournot** strategic equilibrium
+- Model price paths under the **Hotelling Rule** (exhaustible-resource arbitrage) with an optional **risk premium** (ρ), or **Nash-Cournot** strategic equilibrium
+- Apply smooth policy trajectories for cap, price floor, price ceiling, and free-allocation phase-outs across any date range
 - Apply a **Market Stability Reserve (MSR)** to adjust auction supply based on the aggregate bank
-- Compute **CBAM** (Carbon Border Adjustment Mechanism) liability for exporting participants post-equilibrium
+- Compute **CBAM** (Carbon Border Adjustment Mechanism) liability for exporting participants post-equilibrium, including multi-jurisdiction CBAM and EUA price ensembles
+- Model **indirect (Scope 2) emissions** from electricity consumption and their CBAM exposure
+- Group participants by **sector** and aggregate compliance costs, auction revenue, and CBAM liability by sector group
 - Compare multiple policy scenarios side by side
 
 ---
@@ -50,7 +53,7 @@ Set `model_approach` at the scenario level. Four values are accepted.
 | Value | Behaviour |
 |---|---|
 | `"competitive"` | Price-taking participants. Brent's method finds `P*` where aggregate demand equals auction supply. Optional perfect-foresight iteration for rational expectations. This is the default. |
-| `"hotelling"` | Prices are pinned to the Hotelling path `P*(t) = λ·(1+r)^(t−t₀)`. The shadow price `λ` is found by bisection so that cumulative residual emissions equal the cumulative `carbon_budget`. Participants are still price-takers at each pinned price. |
+| `"hotelling"` | Prices are pinned to the Hotelling path `P*(t) = λ·(1+r+ρ)^(t−t₀)` where `ρ` is an optional risk premium. The shadow price `λ` is found by bisection so that cumulative residual emissions equal the cumulative `carbon_budget`. Participants are still price-takers at each pinned price. |
 | `"nash_cournot"` | Participants listed in `nash_strategic_participants` internalise their price impact. Best-response iteration (Jacobi-style) converges to the Cournot-Nash equilibrium in abatement quantities. Non-listed participants remain price-takers. |
 | `"all"` | Runs all three approaches and returns results for each, enabling direct comparison. |
 
@@ -61,15 +64,23 @@ Set `model_approach` at the scenario level. Four values are accepted.
 | Feature | Config field(s) | Notes |
 |---|---|---|
 | Free allocation | `free_allocation_ratio` per participant | Share of baseline emissions allocated for free |
+| Free-allocation phase-out | `free_allocation_trajectories` at scenario level | Linearly interpolates per-participant ratios over any date range |
 | Auction design | `auction_offered`, `auction_reserve_price`, `minimum_bid_coverage`, `unsold_treatment` | Full EU-ETS-style auction mechanics |
 | Price floor / ceiling | `price_lower_bound`, `price_upper_bound` | Bracket limits for the root-finder |
+| Policy trajectories | `cap_trajectory`, `price_floor_trajectory`, `price_ceiling_trajectory` | Linearly interpolate cap or price bounds over any date range |
 | Banking | `banking_allowed` | Participants save surplus allowances if future price > current price |
 | Borrowing | `borrowing_allowed`, `borrowing_limit` | Participants borrow against future allocation |
 | Technology switching | `technology_options` per participant | Discrete (winner-takes-all) or mixed-portfolio (SLSQP) |
 | MSR | `msr_enabled`, `msr_upper_threshold`, `msr_lower_threshold`, `msr_withhold_rate`, `msr_release_rate` | Adjusts auction supply before each year's market clearing |
-| CBAM | `cbam_export_share`, `cbam_coverage_ratio`, `eua_price` | Post-equilibrium liability: `max(0, EUA−KAU) × residual × export_share × coverage` |
+| CBAM (single jurisdiction) | `cbam_export_share`, `cbam_coverage_ratio`, `eua_price` | Post-equilibrium liability: `max(0, EUA−KAU) × residual × export_share × coverage` |
+| CBAM (multi-jurisdiction) | `cbam_jurisdictions` per participant, `eua_prices` dict per year | Per-jurisdiction liability columns (e.g. `CBAM Liability (EU)`, `CBAM Liability (UK)`) |
+| EUA price ensemble | `eua_price_ensemble` per year | Evaluates CBAM against multiple price forecasts (EC, Enerdata, BNEF) simultaneously |
+| Scope 2 / indirect emissions | `electricity_consumption`, `grid_emission_factor`, `scope2_cbam_coverage` | Adds `Indirect Emissions` and `Scope 2 CBAM Liability` to results |
+| Sector grouping | `sector_group` per participant | Aggregated cost, abatement, revenue, and CBAM rows in `scenario_summary` |
 | Hotelling path | `model_approach: "hotelling"`, `discount_rate`, `carbon_budget` | Shadow-price bisection over cumulative budget |
+| Hotelling risk premium | `risk_premium` at scenario level | Augments growth rate: `P(t) = λ·(1+r+ρ)^t` |
 | Nash-Cournot | `model_approach: "nash_cournot"`, `nash_strategic_participants` | Best-response iteration for named strategic participants |
+| Validation | automatic | Duplicate names, penalty < floor, cap < supply all raise `ValueError` |
 
 ---
 
@@ -84,6 +95,7 @@ Full field reference: [docs/data-model.md](docs/data-model.md)
   "name": "My Scenario",
   "model_approach": "competitive",
   "discount_rate": 0.04,
+  "risk_premium": 0.01,
   "nash_strategic_participants": ["Steel Plant A"],
   "msr_enabled": false,
   "msr_upper_threshold": 200.0,
@@ -92,6 +104,12 @@ Full field reference: [docs/data-model.md](docs/data-model.md)
   "msr_release_rate": 50.0,
   "msr_cancel_excess": false,
   "msr_cancel_threshold": 400.0,
+  "cap_trajectory": {"start_year": "2030", "end_year": "2040", "start_value": 500.0, "end_value": 350.0},
+  "price_floor_trajectory": {"start_year": "2030", "end_year": "2040", "start_value": 15.0, "end_value": 40.0},
+  "price_ceiling_trajectory": {"start_year": "2030", "end_year": "2040", "start_value": 200.0, "end_value": 300.0},
+  "free_allocation_trajectories": [
+    {"participant_name": "Steel Plant A", "start_year": "2025", "end_year": "2034", "start_ratio": 1.0, "end_ratio": 0.0}
+  ],
   "years": [ { ...year }, ... ]
 }
 ```
@@ -111,7 +129,9 @@ Full field reference: [docs/data-model.md](docs/data-model.md)
 | `borrowing_allowed` | bool | `false` | Allow borrowing from future allocation |
 | `borrowing_limit` | float ≥ 0 | `0.0` | Maximum borrowing per participant |
 | `expectation_rule` | string | `"next_year_baseline"` | One of `myopic`, `next_year_baseline`, `perfect_foresight`, `manual` |
-| `eua_price` | float ≥ 0 | `0.0` | Reference EUA price for CBAM calculation |
+| `eua_price` | float ≥ 0 | `0.0` | Reference EUA price for single-jurisdiction CBAM calculation |
+| `eua_prices` | object | `{}` | Dict of jurisdiction → price for multi-jurisdiction CBAM, e.g. `{"EU": 65.0, "UK": 55.0}` |
+| `eua_price_ensemble` | object | `{}` | Dict of forecast source → price for ensemble CBAM, e.g. `{"EC": 70.0, "Enerdata": 65.0, "BNEF": 60.0}` |
 
 ### Participant-level fields (key subset)
 
@@ -121,8 +141,13 @@ Full field reference: [docs/data-model.md](docs/data-model.md)
 | `free_allocation_ratio` | float [0,1] | `0.0` | Share of emissions allocated for free |
 | `penalty_price` | float > 0 | `100.0` | Fine per uncovered tonne |
 | `abatement_type` | `"linear"` \| `"piecewise"` \| `"threshold"` | `"linear"` | MAC model |
-| `cbam_export_share` | float [0,1] | `0.0` | Share of output exported to CBAM-covered markets |
-| `cbam_coverage_ratio` | float [0,1] | `1.0` | Fraction of exported emissions under CBAM scope |
+| `cbam_export_share` | float [0,1] | `0.0` | Share of output exported to CBAM-covered markets (single-jurisdiction) |
+| `cbam_coverage_ratio` | float [0,1] | `1.0` | Fraction of exported emissions under CBAM scope (single-jurisdiction) |
+| `cbam_jurisdictions` | array | `[]` | Multi-jurisdiction CBAM config: `[{name, export_share, coverage_ratio}]` |
+| `sector_group` | string | `""` | Groups participant into a named sector for aggregated summary rows |
+| `electricity_consumption` | float ≥ 0 | `0.0` | Annual electricity use (MWh) for Scope 2 emissions calculation |
+| `grid_emission_factor` | float ≥ 0 | `0.0` | Tonnes CO₂e per MWh for the participant's grid |
+| `scope2_cbam_coverage` | float [0,1] | `0.0` | Fraction of indirect emissions subject to CBAM |
 
 ---
 
@@ -206,7 +231,7 @@ Guided tool for building technology pathways:
 
 ### Outputs
 
-After running: equilibrium carbon price, auction revenue, total abatement, allowance trading positions, technology pathway, participant-level compliance costs, bank balances, MSR pool movements, CBAM liability.
+After running: equilibrium carbon price, auction revenue, total abatement, allowance trading positions, technology pathway, participant-level compliance costs, bank balances, MSR pool movements, CBAM liability (single and multi-jurisdiction), Scope 2 CBAM liability, indirect emissions, and sector-group aggregates.
 
 ---
 
