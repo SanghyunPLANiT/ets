@@ -40,6 +40,8 @@ def _participant_outcome(
         banking_allowed=market.banking_allowed,
         borrowing_allowed=market.borrowing_allowed,
         borrowing_limit=market.borrowing_limit,
+        slsqp_max_iters=getattr(market, "solver_slsqp_max_iters", 400),
+        slsqp_ftol=getattr(market, "solver_slsqp_ftol", 1e-9),
     )
 
 
@@ -63,8 +65,10 @@ def _solve_for_supply(
     ) - target_supply
 
     expansion_count = 0
-    while f_low * f_high > 0 and expansion_count < 10:
-        upper_bound *= 2.0
+    max_expansions = getattr(market, "solver_price_bracket_max_expansions", 10)
+    expand_factor  = getattr(market, "solver_price_bracket_expand_factor", 2.0)
+    while f_low * f_high > 0 and expansion_count < max_expansions:
+        upper_bound *= expand_factor
         f_high = total_net_demand(
             market, upper_bound,
             bank_balances=bank_balances,

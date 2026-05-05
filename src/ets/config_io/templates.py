@@ -51,6 +51,21 @@ def blank_scenario() -> dict[str, Any]:
         "solver_nash_convergence_tol": 0.001,
         # Market clearing
         "solver_penalty_price_multiplier": 1.25,
+        # Hotelling λ bracket
+        "solver_hotelling_lambda_initial_low": 0.001,
+        "solver_hotelling_lambda_initial_high": 20.0,
+        "solver_hotelling_lambda_expand_factor": 3.0,
+        # Price bracket expansion
+        "solver_price_bracket_expand_factor": 2.0,
+        "solver_price_bracket_max_expansions": 10,
+        # Mixed technology SLSQP
+        "solver_slsqp_max_iters": 400,
+        "solver_slsqp_ftol": 1e-9,
+        # Nash inner best-response minimiser
+        "solver_nash_inner_xatol": 1e-4,
+        # Calibration (Nelder-Mead)
+        "solver_calibration_xatol": 0.1,
+        "solver_calibration_fatol": 0.01,
         "years": [blank_year_config()],
     }
 

@@ -226,7 +226,10 @@ def solve_hotelling_path(
     # Higher λ  →  higher prices  →  more abatement  →  lower residual emissions
     # We need: emissions(lam_low) > budget  AND  emissions(lam_high) < budget
 
-    lam_low, lam_high = 0.001, 20.0
+    m0 = ordered_markets[0]
+    lam_low  = float(getattr(m0, "solver_hotelling_lambda_initial_low",  0.001))
+    lam_high = float(getattr(m0, "solver_hotelling_lambda_initial_high", 20.0))
+    lam_expand_factor = float(getattr(m0, "solver_hotelling_lambda_expand_factor", 3.0))
 
     _, em_low  = run(lam_low)
     _, em_high = run(lam_high)
@@ -242,7 +245,7 @@ def solve_hotelling_path(
     for _ in range(max_lambda_expansions):
         if em_high < total_budget:
             break
-        lam_high *= 3.0
+        lam_high *= lam_expand_factor
         _, em_high = run(lam_high)
 
     if em_low <= total_budget or em_high >= total_budget:

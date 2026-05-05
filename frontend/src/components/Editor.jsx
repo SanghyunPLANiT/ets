@@ -1227,6 +1227,21 @@ export function Editor({
                       0.00001, 1e-9
                     )}
                   </label>
+                  <label>
+                    <span className="ekey">λ initial low <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Lower bound of initial shadow-price bracket. Default: 0.001</span>
+                    {numInput(workingScenario.solver_hotelling_lambda_initial_low ?? 0.001, (v) => updateScenario({ solver_hotelling_lambda_initial_low: Math.max(1e-6, v) }), 0.001, 1e-6)}
+                  </label>
+                  <label>
+                    <span className="ekey">λ initial high <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Upper bound of initial shadow-price bracket. Default: 20.0</span>
+                    {numInput(workingScenario.solver_hotelling_lambda_initial_high ?? 20.0, (v) => updateScenario({ solver_hotelling_lambda_initial_high: Math.max(0.01, v) }), 1, 0.01)}
+                  </label>
+                  <label>
+                    <span className="ekey">λ expand factor <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Multiplier applied to upper λ bound when bracket is too small. Default: 3.0</span>
+                    {numInput(workingScenario.solver_hotelling_lambda_expand_factor ?? 3.0, (v) => updateScenario({ solver_hotelling_lambda_expand_factor: Math.max(1.1, v) }), 0.1, 1.1)}
+                  </label>
                 </div>
               </div>
             )}
@@ -1344,6 +1359,11 @@ export function Editor({
                       0.0001, 1e-8
                     )}
                   </label>
+                  <label>
+                    <span className="ekey">Inner solver tolerance (xatol) <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Abatement tolerance for the per-participant best-response minimiser. Default: 0.0001</span>
+                    {numInput(workingScenario.solver_nash_inner_xatol ?? 1e-4, (v) => updateScenario({ solver_nash_inner_xatol: Math.max(1e-10, v) }), 1e-5, 1e-10)}
+                  </label>
                 </div>
               </div>
             )}
@@ -1370,6 +1390,26 @@ export function Editor({
                       (v) => updateScenario({ solver_competitive_tolerance: Math.max(1e-8, v) }),
                       0.0001, 1e-8
                     )}
+                  </label>
+                  <label>
+                    <span className="ekey">Price bracket expand factor <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Multiplier applied to upper price bound when bracket fails. Default: 2.0</span>
+                    {numInput(workingScenario.solver_price_bracket_expand_factor ?? 2.0, (v) => updateScenario({ solver_price_bracket_expand_factor: Math.max(1.1, v) }), 0.1, 1.1)}
+                  </label>
+                  <label>
+                    <span className="ekey">Price bracket max expansions <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">Max times the price bracket upper bound is expanded. Default: 10</span>
+                    {numInput(workingScenario.solver_price_bracket_max_expansions ?? 10, (v) => updateScenario({ solver_price_bracket_max_expansions: Math.max(1, Math.round(v)) }), 1, 1)}
+                  </label>
+                  <label>
+                    <span className="ekey">Mixed portfolio max iterations <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">SLSQP iteration limit for mixed technology portfolio. Default: 400</span>
+                    {numInput(workingScenario.solver_slsqp_max_iters ?? 400, (v) => updateScenario({ solver_slsqp_max_iters: Math.max(1, Math.round(v)) }), 10, 1)}
+                  </label>
+                  <label>
+                    <span className="ekey">Mixed portfolio tolerance (ftol) <span className="field-flag optional">optional</span></span>
+                    <span className="solver-settings-desc">SLSQP convergence tolerance for mixed technology portfolio. Default: 1e-9</span>
+                    {numInput(workingScenario.solver_slsqp_ftol ?? 1e-9, (v) => updateScenario({ solver_slsqp_ftol: Math.max(1e-15, v) }), 1e-10, 1e-15)}
                   </label>
                 </div>
               </div>
@@ -1741,6 +1781,21 @@ export function Editor({
               </div>
             )}
           </div>
+          </CollapsibleGroup>
+
+          <CollapsibleGroup title="Calibration solver" defaultOpen={false}>
+            <div className="solver-settings-grid">
+              <label>
+                <span className="ekey">Calibration xatol <span className="field-flag optional">optional</span></span>
+                <span className="solver-settings-desc">Nelder-Mead slope change tolerance. Smaller = tighter fit but slower. Default: 0.1</span>
+                {numInput(workingScenario.solver_calibration_xatol ?? 0.1, (v) => updateScenario({ solver_calibration_xatol: Math.max(1e-6, v) }), 0.01, 1e-6)}
+              </label>
+              <label>
+                <span className="ekey">Calibration fatol <span className="field-flag optional">optional</span></span>
+                <span className="solver-settings-desc">Nelder-Mead MSE change tolerance. Smaller = tighter fit but slower. Default: 0.01</span>
+                {numInput(workingScenario.solver_calibration_fatol ?? 0.01, (v) => updateScenario({ solver_calibration_fatol: Math.max(1e-8, v) }), 0.001, 1e-8)}
+              </label>
+            </div>
           </CollapsibleGroup>
 
         </section>

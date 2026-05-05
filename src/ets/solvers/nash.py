@@ -179,7 +179,7 @@ def _solve_nash_year(
                 strategic_cost,
                 bounds=(0.0, strat_p.max_abatement),
                 method="bounded",
-                options={"xatol": 1e-4},
+                options={"xatol": float(getattr(market, "solver_nash_inner_xatol", 1e-4))},
             )
             new_abatements[strat_p.name] = float(
                 np.clip(result.x, 0.0, strat_p.max_abatement)

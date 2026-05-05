@@ -240,12 +240,16 @@ class MarketParticipant:
         banking_allowed: bool,
         borrowing_allowed: bool,
         borrowing_limit: float,
+        slsqp_max_iters: int = 400,
+        slsqp_ftol: float = 1e-9,
     ) -> ComplianceOutcome:
         from .compliance import _optimize_mixed_technology_portfolio
         return _optimize_mixed_technology_portfolio(
             self, technologies, carbon_price,
             starting_bank_balance, expected_future_price,
             banking_allowed, borrowing_allowed, borrowing_limit,
+            slsqp_max_iters=slsqp_max_iters,
+            slsqp_ftol=slsqp_ftol,
         )
 
     def optimize_compliance(
@@ -256,6 +260,8 @@ class MarketParticipant:
         banking_allowed: bool = False,
         borrowing_allowed: bool = False,
         borrowing_limit: float = 0.0,
+        slsqp_max_iters: int = 400,
+        slsqp_ftol: float = 1e-9,
     ) -> ComplianceOutcome:
         from .compliance import optimize_compliance
         return optimize_compliance(
@@ -265,6 +271,8 @@ class MarketParticipant:
             banking_allowed=banking_allowed,
             borrowing_allowed=borrowing_allowed,
             borrowing_limit=borrowing_limit,
+            slsqp_max_iters=slsqp_max_iters,
+            slsqp_ftol=slsqp_ftol,
         )
 
     def abatement_amount(self, carbon_price: float, **kwargs: float) -> float:

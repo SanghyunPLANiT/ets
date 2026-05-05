@@ -249,6 +249,8 @@ def _optimize_mixed_technology_portfolio(
     banking_allowed: bool,
     borrowing_allowed: bool,
     borrowing_limit: float,
+    slsqp_max_iters: int = 400,
+    slsqp_ftol: float = 1e-9,
 ) -> ComplianceOutcome:
     tech_count = len(technologies)
     share_caps = np.array([max(0.0, option.max_activity_share) for option in technologies], dtype=float)
@@ -338,7 +340,7 @@ def _optimize_mixed_technology_portfolio(
         method="SLSQP",
         bounds=bounds,
         constraints=constraints,
-        options={"maxiter": 400, "ftol": 1e-9},
+        options={"maxiter": slsqp_max_iters, "ftol": slsqp_ftol},
     )
     if not result.success:
         candidate_shares = [initial_shares]
@@ -413,6 +415,8 @@ def optimize_compliance(
     banking_allowed: bool = False,
     borrowing_allowed: bool = False,
     borrowing_limit: float = 0.0,
+    slsqp_max_iters: int = 400,
+    slsqp_ftol: float = 1e-9,
 ) -> ComplianceOutcome:
     technologies = participant.technology_options or [_default_technology(participant)]
     mixed_enabled = any(
@@ -453,6 +457,8 @@ def optimize_compliance(
         banking_allowed=banking_allowed,
         borrowing_allowed=borrowing_allowed,
         borrowing_limit=borrowing_limit,
+        slsqp_max_iters=slsqp_max_iters,
+        slsqp_ftol=slsqp_ftol,
     )
 
 

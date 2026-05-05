@@ -88,8 +88,10 @@ def calibrate_slopes(
             return 1e12
 
     x0 = np.array(initial_slopes, dtype=float)
+    xatol = float(scenario.get("solver_calibration_xatol", 0.1))
+    fatol = float(scenario.get("solver_calibration_fatol", 0.01))
     result = minimize(_objective, x0, method="Nelder-Mead",
-                      options={"maxiter": max_iter, "xatol": 0.1, "fatol": 0.01})
+                      options={"maxiter": max_iter, "xatol": xatol, "fatol": fatol})
 
     final_cfg = _set_slopes(base_config, result.x.tolist())
     markets = build_markets_from_config(final_cfg)

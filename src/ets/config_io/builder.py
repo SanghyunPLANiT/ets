@@ -167,6 +167,16 @@ def normalize_scenario(raw_scenario: dict[str, Any]) -> dict[str, Any]:
         "solver_nash_max_iters": int(_fval("solver_nash_max_iters", 120)),
         "solver_nash_convergence_tol": _fval("solver_nash_convergence_tol", 0.001),
         "solver_penalty_price_multiplier": _fval("solver_penalty_price_multiplier", 1.25),
+        "solver_hotelling_lambda_initial_low":   _fval("solver_hotelling_lambda_initial_low", 0.001),
+        "solver_hotelling_lambda_initial_high":  _fval("solver_hotelling_lambda_initial_high", 20.0),
+        "solver_hotelling_lambda_expand_factor": _fval("solver_hotelling_lambda_expand_factor", 3.0),
+        "solver_price_bracket_expand_factor":    _fval("solver_price_bracket_expand_factor", 2.0),
+        "solver_price_bracket_max_expansions":   int(_fval("solver_price_bracket_max_expansions", 10)),
+        "solver_slsqp_max_iters":                int(_fval("solver_slsqp_max_iters", 400)),
+        "solver_slsqp_ftol":                     _fval("solver_slsqp_ftol", 1e-9),
+        "solver_nash_inner_xatol":               _fval("solver_nash_inner_xatol", 1e-4),
+        "solver_calibration_xatol":              _fval("solver_calibration_xatol", 0.1),
+        "solver_calibration_fatol":              _fval("solver_calibration_fatol", 0.01),
         "free_allocation_trajectories": list(scenario.get("free_allocation_trajectories") or []),
         "cap_trajectory": _normalize_trajectory(scenario.get("cap_trajectory")),
         "price_floor_trajectory": _normalize_trajectory(scenario.get("price_floor_trajectory")),
@@ -236,6 +246,16 @@ def build_markets_from_config(config: dict[str, Any]) -> list[CarbonMarket]:
             "solver_nash_max_iters": scenario.get("solver_nash_max_iters", 120),
             "solver_nash_convergence_tol": scenario.get("solver_nash_convergence_tol", 0.001),
             "solver_penalty_price_multiplier": scenario.get("solver_penalty_price_multiplier", 1.25),
+            "solver_hotelling_lambda_initial_low":   scenario.get("solver_hotelling_lambda_initial_low", 0.001),
+            "solver_hotelling_lambda_initial_high":  scenario.get("solver_hotelling_lambda_initial_high", 20.0),
+            "solver_hotelling_lambda_expand_factor": scenario.get("solver_hotelling_lambda_expand_factor", 3.0),
+            "solver_price_bracket_expand_factor":    scenario.get("solver_price_bracket_expand_factor", 2.0),
+            "solver_price_bracket_max_expansions":   scenario.get("solver_price_bracket_max_expansions", 10),
+            "solver_slsqp_max_iters":                scenario.get("solver_slsqp_max_iters", 400),
+            "solver_slsqp_ftol":                     scenario.get("solver_slsqp_ftol", 1e-9),
+            "solver_nash_inner_xatol":               scenario.get("solver_nash_inner_xatol", 1e-4),
+            "solver_calibration_xatol":              scenario.get("solver_calibration_xatol", 0.1),
+            "solver_calibration_fatol":              scenario.get("solver_calibration_fatol", 0.01),
         }
         for year_config in scenario["years"]:
             markets.append(build_market_from_year(scenario["name"], year_config, scenario_meta))
@@ -451,6 +471,16 @@ def build_market_from_year(
     market.solver_nash_price_step = float(meta.get("solver_nash_price_step") or 0.5)
     market.solver_nash_max_iters = int(meta.get("solver_nash_max_iters") or 120)
     market.solver_nash_convergence_tol = float(meta.get("solver_nash_convergence_tol") or 0.001)
+    market.solver_hotelling_lambda_initial_low   = float(meta.get("solver_hotelling_lambda_initial_low") or 0.001)
+    market.solver_hotelling_lambda_initial_high  = float(meta.get("solver_hotelling_lambda_initial_high") or 20.0)
+    market.solver_hotelling_lambda_expand_factor = float(meta.get("solver_hotelling_lambda_expand_factor") or 3.0)
+    market.solver_price_bracket_expand_factor    = float(meta.get("solver_price_bracket_expand_factor") or 2.0)
+    market.solver_price_bracket_max_expansions   = int(meta.get("solver_price_bracket_max_expansions") or 10)
+    market.solver_slsqp_max_iters                = int(meta.get("solver_slsqp_max_iters") or 400)
+    market.solver_slsqp_ftol                     = float(meta.get("solver_slsqp_ftol") or 1e-9)
+    market.solver_nash_inner_xatol               = float(meta.get("solver_nash_inner_xatol") or 1e-4)
+    market.solver_calibration_xatol              = float(meta.get("solver_calibration_xatol") or 0.1)
+    market.solver_calibration_fatol              = float(meta.get("solver_calibration_fatol") or 0.01)
     return market
 
 
