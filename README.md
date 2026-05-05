@@ -1,335 +1,565 @@
-# Particle Equilibrium — ETS Simulator
+# K-ETS Partial-Equilibrium Simulator
 
-A web-based **Emissions Trading System (ETS) simulator** that computes carbon market equilibria across multiple years, scenarios, and participant types. Supports competitive price-taking, Hotelling resource-pricing, and Nash-Cournot strategic behaviour. The solver is built on SciPy; the frontend is React/Vite.
-
-**Live app:** https://ets.vercel.app
+A research-grade, multi-year partial-equilibrium simulator for the Korean Emissions Trading Scheme (K-ETS) and comparable cap-and-trade systems. Models competitive, Hotelling-optimal, and Nash-Cournot price formation with banking, borrowing, CBAM exposure, Output-Based Allocation, sector-level caps, and Market Stability Reserve mechanics.
 
 ---
 
-## What it does
+## Live App
 
-- Configure a carbon market — cap trajectory, auction design, price bounds, participant abatement curves, technology options, banking/borrowing rules
-- Solve for the equilibrium carbon price in each year using Brent's root-finding method
-- Simulate multi-year pathways with intertemporal banking, borrowing, and four expectation-formation rules including rational expectations (perfect foresight)
-- Model price paths under the **Hotelling Rule** (exhaustible-resource arbitrage) with an optional **risk premium** (ρ), or **Nash-Cournot** strategic equilibrium
-- Apply smooth policy trajectories for cap, price floor, price ceiling, and free-allocation phase-outs across any date range
-- Apply a **Market Stability Reserve (MSR)** to adjust auction supply based on the aggregate bank
-- Compute **CBAM** (Carbon Border Adjustment Mechanism) liability for exporting participants post-equilibrium, including multi-jurisdiction CBAM and EUA price ensembles
-- Model **indirect (Scope 2) emissions** from electricity consumption and their CBAM exposure
-- Group participants by **sector** and aggregate compliance costs, auction revenue, and CBAM liability by sector group
-- Compare multiple policy scenarios side by side
+**Deployed:** https://ets.vercel.app
+
+The `api/index.py` shim exposes the WSGI application to Vercel's serverless runtime. The React frontend communicates with the Python backend via a JSON REST API.
 
 ---
 
-## Quick start
+## Quick Start
+
+### Backend (local server)
 
 ```bash
-# Backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python app.py                  # API server on :8000
+# Install dependencies
+pip install -e ".[dev]"        # or: uv sync --all-extras
 
-# Frontend (separate terminal)
+# Start the combined backend + frontend server
+python app.py                  # opens http://127.0.0.1:8765 in your browser
+```
+
+### Frontend (development)
+
+```bash
 cd frontend
 npm install
-npm run dev                    # Vite dev server on :5173 (proxies /api → :8000)
+npm run dev                    # Vite dev server at http://localhost:5173
 ```
 
-### Build & deploy
+### Frontend (production build)
 
 ```bash
-cd frontend && npm run build
+cd frontend
+npm run build
 cp public/styles.css dist/styles.css
-cd ..
-vercel --prod
 ```
 
----
+### Vercel Deploy
 
-## Modelling approaches
-
-Set `model_approach` at the scenario level. Four values are accepted.
-
-| Value | Behaviour |
-|---|---|
-| `"competitive"` | Price-taking participants. Brent's method finds `P*` where aggregate demand equals auction supply. Optional perfect-foresight iteration for rational expectations. This is the default. |
-| `"hotelling"` | Prices are pinned to the Hotelling path `P*(t) = λ·(1+r+ρ)^(t−t₀)` where `ρ` is an optional risk premium. The shadow price `λ` is found by bisection so that cumulative residual emissions equal the cumulative `carbon_budget`. Participants are still price-takers at each pinned price. |
-| `"nash_cournot"` | Participants listed in `nash_strategic_participants` internalise their price impact. Best-response iteration (Jacobi-style) converges to the Cournot-Nash equilibrium in abatement quantities. Non-listed participants remain price-takers. |
-| `"all"` | Runs all three approaches and returns results for each, enabling direct comparison. |
-
----
-
-## Key features
-
-| Feature | Config field(s) | Notes |
-|---|---|---|
-| Free allocation | `free_allocation_ratio` per participant | Share of baseline emissions allocated for free |
-| Free-allocation phase-out | `free_allocation_trajectories` at scenario level | Linearly interpolates per-participant ratios over any date range |
-| Auction design | `auction_offered`, `auction_reserve_price`, `minimum_bid_coverage`, `unsold_treatment` | Full EU-ETS-style auction mechanics |
-| Price floor / ceiling | `price_lower_bound`, `price_upper_bound` | Bracket limits for the root-finder |
-| Policy trajectories | `cap_trajectory`, `price_floor_trajectory`, `price_ceiling_trajectory` | Linearly interpolate cap or price bounds over any date range |
-| Banking | `banking_allowed` | Participants save surplus allowances if future price > current price |
-| Borrowing | `borrowing_allowed`, `borrowing_limit` | Participants borrow against future allocation |
-| Technology switching | `technology_options` per participant | Discrete (winner-takes-all) or mixed-portfolio (SLSQP) |
-| MSR | `msr_enabled`, `msr_upper_threshold`, `msr_lower_threshold`, `msr_withhold_rate`, `msr_release_rate` | Adjusts auction supply before each year's market clearing |
-| CBAM (single jurisdiction) | `cbam_export_share`, `cbam_coverage_ratio`, `eua_price` | Post-equilibrium liability: `max(0, EUA−KAU) × residual × export_share × coverage` |
-| CBAM (multi-jurisdiction) | `cbam_jurisdictions` per participant, `eua_prices` dict per year | Per-jurisdiction liability columns (e.g. `CBAM Liability (EU)`, `CBAM Liability (UK)`) |
-| EUA price ensemble | `eua_price_ensemble` per year | Evaluates CBAM against multiple price forecasts (EC, Enerdata, BNEF) simultaneously |
-| Scope 2 / indirect emissions | `electricity_consumption`, `grid_emission_factor`, `scope2_cbam_coverage` | Adds `Indirect Emissions` and `Scope 2 CBAM Liability` to results |
-| Sector grouping | `sector_group` per participant | Aggregated cost, abatement, revenue, and CBAM rows in `scenario_summary` |
-| Hotelling path | `model_approach: "hotelling"`, `discount_rate`, `carbon_budget` | Shadow-price bisection over cumulative budget |
-| Hotelling risk premium | `risk_premium` at scenario level | Augments growth rate: `P(t) = λ·(1+r+ρ)^t` |
-| Nash-Cournot | `model_approach: "nash_cournot"`, `nash_strategic_participants` | Best-response iteration for named strategic participants |
-| Validation | automatic | Duplicate names, penalty < floor, cap < supply all raise `ValueError` |
-
----
-
-## Config schema quick reference
-
-Full field reference: [docs/data-model.md](docs/data-model.md)
-
-### Scenario-level fields
-
-```json
-{
-  "name": "My Scenario",
-  "model_approach": "competitive",
-  "discount_rate": 0.04,
-  "risk_premium": 0.01,
-  "nash_strategic_participants": ["Steel Plant A"],
-  "msr_enabled": false,
-  "msr_upper_threshold": 200.0,
-  "msr_lower_threshold": 50.0,
-  "msr_withhold_rate": 0.12,
-  "msr_release_rate": 50.0,
-  "msr_cancel_excess": false,
-  "msr_cancel_threshold": 400.0,
-  "cap_trajectory": {"start_year": "2030", "end_year": "2040", "start_value": 500.0, "end_value": 350.0},
-  "price_floor_trajectory": {"start_year": "2030", "end_year": "2040", "start_value": 15.0, "end_value": 40.0},
-  "price_ceiling_trajectory": {"start_year": "2030", "end_year": "2040", "start_value": 200.0, "end_value": 300.0},
-  "free_allocation_trajectories": [
-    {"participant_name": "Steel Plant A", "start_year": "2025", "end_year": "2034", "start_ratio": 1.0, "end_ratio": 0.0}
-  ],
-  "years": [ { ...year }, ... ]
-}
-```
-
-### Year-level fields (key subset)
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `year` | string | `"2030"` | Period label used for sorting and display |
-| `total_cap` | float ≥ 0 | `0.0` | Hard cap on covered emissions (Mt CO₂e) |
-| `carbon_budget` | float ≥ 0 | `0.0` | Cumulative budget used by the Hotelling solver |
-| `auction_mode` | `"explicit"` \| `"derive_from_cap"` | `"explicit"` | How auction supply is computed |
-| `auction_offered` | float ≥ 0 | `0.0` | Allowances offered at auction (explicit mode) |
-| `price_lower_bound` | float ≥ 0 | `0.0` | Price floor |
-| `price_upper_bound` | float > 0 | `100.0` | Price ceiling |
-| `banking_allowed` | bool | `false` | Allow saving surplus allowances |
-| `borrowing_allowed` | bool | `false` | Allow borrowing from future allocation |
-| `borrowing_limit` | float ≥ 0 | `0.0` | Maximum borrowing per participant |
-| `expectation_rule` | string | `"next_year_baseline"` | One of `myopic`, `next_year_baseline`, `perfect_foresight`, `manual` |
-| `eua_price` | float ≥ 0 | `0.0` | Reference EUA price for single-jurisdiction CBAM calculation |
-| `eua_prices` | object | `{}` | Dict of jurisdiction → price for multi-jurisdiction CBAM, e.g. `{"EU": 65.0, "UK": 55.0}` |
-| `eua_price_ensemble` | object | `{}` | Dict of forecast source → price for ensemble CBAM, e.g. `{"EC": 70.0, "Enerdata": 65.0, "BNEF": 60.0}` |
-
-### Participant-level fields (key subset)
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `initial_emissions` | float ≥ 0 | `0.0` | Gross emissions baseline (Mt CO₂e) |
-| `free_allocation_ratio` | float [0,1] | `0.0` | Share of emissions allocated for free |
-| `penalty_price` | float > 0 | `100.0` | Fine per uncovered tonne |
-| `abatement_type` | `"linear"` \| `"piecewise"` \| `"threshold"` | `"linear"` | MAC model |
-| `cbam_export_share` | float [0,1] | `0.0` | Share of output exported to CBAM-covered markets (single-jurisdiction) |
-| `cbam_coverage_ratio` | float [0,1] | `1.0` | Fraction of exported emissions under CBAM scope (single-jurisdiction) |
-| `cbam_jurisdictions` | array | `[]` | Multi-jurisdiction CBAM config: `[{name, export_share, coverage_ratio}]` |
-| `sector_group` | string | `""` | Groups participant into a named sector for aggregated summary rows |
-| `electricity_consumption` | float ≥ 0 | `0.0` | Annual electricity use (MWh) for Scope 2 emissions calculation |
-| `grid_emission_factor` | float ≥ 0 | `0.0` | Tonnes CO₂e per MWh for the participant's grid |
-| `scope2_cbam_coverage` | float [0,1] | `0.0` | Fraction of indirect emissions subject to CBAM |
-
----
-
-## Solver settings
-
-All nine parameters are user-overridable at the scenario level. The table shows their defaults.
-
-| Parameter | Default | Description |
-|---|---|---|
-| `solver_competitive_max_iters` | `25` | Maximum perfect-foresight iterations |
-| `solver_competitive_tolerance` | `0.001` | Convergence tolerance on price ($/t) |
-| `solver_hotelling_max_bisection_iters` | `80` | Maximum bisection steps for λ |
-| `solver_hotelling_max_lambda_expansions` | `20` | Bracket-expansion attempts before error |
-| `solver_hotelling_convergence_tol` | `0.0001` | Relative tolerance on cumulative emissions |
-| `solver_nash_price_step` | `0.5` | Step size for residual demand curve in best-response ($/t) |
-| `solver_nash_max_iters` | `120` | Maximum best-response iterations |
-| `solver_nash_convergence_tol` | `0.001` | Convergence tolerance on abatement changes (Mt) |
-| `solver_penalty_price_multiplier` | `1.25` | Upper bracket = max penalty × this multiplier |
-
----
-
-## Documentation
-
-| Document | What it covers |
-|---|---|
-| [docs/algorithm-overview.md](docs/algorithm-overview.md) | Three-layer architecture, modelling approaches, MSR, CBAM, execution flow |
-| [docs/data-model.md](docs/data-model.md) | Full JSON config schema — every field's type, default, validation, and examples |
-| [docs/mac-abatement.md](docs/mac-abatement.md) | Marginal Abatement Cost models — linear, piecewise, threshold — maths, code, examples |
-| [docs/technology-transition.md](docs/technology-transition.md) | Endogenous technology choice, mixed portfolio optimisation, transition pathways |
-| [docs/market-equilibrium.md](docs/market-equilibrium.md) | Brent's method equilibrium solver, auction mechanics, price bounds, edge cases |
-| [docs/multi-year-simulation.md](docs/multi-year-simulation.md) | Banking, borrowing, expectation rules, Hotelling path, Nash-Cournot path, MSR integration, CBAM |
-
----
-
-## GUI walkthrough
-
-### Header controls
-
-| Button | Action |
-|---|---|
-| `Load template` | Load a predefined scenario or blank config (does not run) |
-| `Add scenario` | Create a new empty scenario |
-| `Duplicate scenario` | Copy the current scenario |
-| `Remove scenario` | Delete the current scenario (requires ≥ 2 scenarios) |
-| `Run scenario` | Run the base template |
-| `Run edited` | Run the current values in the editor |
-| `Compare all scenarios` | Switch to multi-scenario comparison view |
-
-Always use **Run edited** after changing values in the builder.
-
-### Scenario builder steps
-
-**Step 1 — Scenario:** Name, colour, description. Affects labelling across all charts.
-
-**Step 2 — Market Rules:** Per-year settings: cap, auction volume, price bounds, banking/borrowing, expectation rule.
-- `auction_mode = explicit`: set `auctioned_allowances` directly.
-- `auction_mode = derive_from_cap`: auction supply = cap − free allocation − reserved − cancelled.
-
-**Step 3 — Participants:** Name, sector, emissions, free allocation ratio, penalty price, abatement model (with visual MAC block editor), and technology options (with transition wizard).
-
-**Step 4 — Review:** Compact pre-run validation summary: scenario metadata, year settings, participant count, technology options, intertemporal rules.
-
-### MAC block editor
-
-MAC blocks are entered as structured rows or as raw text `amount@cost; amount@cost`. Example:
-
-```
-6@20; 8@55; 8@110
-```
-
-means: first 6 Mt at $20/t, next 8 Mt at $55/t, next 8 Mt at $110/t.
-
-### Transition wizard
-
-Guided tool for building technology pathways:
-1. Select a participant.
-2. Choose an archetype (Steel, Coal power, Cement, Generic industry).
-3. Choose replacement technologies.
-4. Choose aggressiveness (conservative / moderate / aggressive).
-5. Preview and apply — the wizard writes `technology_options` into the participant config.
-
-### Outputs
-
-After running: equilibrium carbon price, auction revenue, total abatement, allowance trading positions, technology pathway, participant-level compliance costs, bank balances, MSR pool movements, CBAM liability (single and multi-jurisdiction), Scope 2 CBAM liability, indirect emissions, and sector-group aggregates.
-
----
-
-## Core model concepts
-
-### Compliance cost minimisation (Layer 1)
-
-Each participant minimises:
-
-```
-min_a  fixed_cost  +  abatement_cost(a)  +  P × allowances_bought
-                   +  penalty × uncovered  −  P × allowances_sold
-                   −  P_future × ending_bank_balance
-```
-
-subject to `0 ≤ a ≤ max_abatement`.
-
-### Market clearing (Layer 2)
-
-```
-f(P) = Σ_i net_allowances_traded_i(P) − Q = 0
-```
-
-Solved with Brent's method. `D(P)` is monotonically non-increasing, guaranteeing a unique root.
-
-### Multi-year path (Layer 3)
-
-State carried forward per year: bank balances per participant, carry-forward unsold allowances.
-
-### Abatement types
-
-| Type | Formula | Use case |
-|---|---|---|
-| `linear` | `MAC(a) = slope × a`, `C(a) = ½ slope a²` | Simple sectors, early-stage modelling |
-| `piecewise` | Ordered blocks `(amount, mc)` fully taken if `P ≥ mc` | Industrial sectors with known measure costs |
-| `threshold` | `a = max_abatement if P ≥ threshold_cost else 0` | Breakthrough technologies with binary viability |
+1. Fork the repository.
+2. Connect to Vercel. The `vercel.json` routes all requests to `api/index.py`.
+3. No environment variables are required for a basic deployment.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    Vercel Edge                      │
-│                                                     │
-│  ┌──────────────────┐    ┌───────────────────────┐  │
-│  │  React / Vite    │    │  Python WSGI (Falcon)  │  │
-│  │  frontend/dist/  │◄──►│  api/index.py          │  │
-│  │                  │    │  src/ets/              │  │
-│  └──────────────────┘    └───────────────────────┘  │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Browser (React + Vite)                                                  │
+│  frontend/src/                                                           │
+│  Editor → scenario builder, collapsible config panels                   │
+│  AppViews → Market/Trajectory/Emissions charts, Participant panel        │
+└───────────────────────────┬──────────────────────────────────────────────┘
+                             │ JSON over HTTP
+┌───────────────────────────▼──────────────────────────────────────────────┐
+│  WSGI Web Layer  (src/ets/web/)                                          │
+│  server.py        ThreadingHTTPServer                                    │
+│  handlers.py      Route: /api/run, /api/calibrate, /api/batch-run,      │
+│                         /api/import-csv, /api/narrative, /api/templates  │
+└───────────────────────────┬──────────────────────────────────────────────┘
+                             │ Python function calls
+┌───────────────────────────▼──────────────────────────────────────────────┐
+│  Simulation Engine  (src/ets/)                                           │
+│                                                                          │
+│  config_io/        JSON → normalised dicts → CarbonMarket objects       │
+│  solvers/          simulation.py  competitive path + perfect foresight   │
+│                    hotelling.py   Hotelling shadow-price bisection       │
+│                    nash.py        Nash-Cournot best-response iteration   │
+│                    expectations.py expectation rules                    │
+│                    msr.py         Market Stability Reserve state         │
+│  market/           equilibrium.py Brent's method root-finder            │
+│                    results.py     CBAM, Scope 2, sector aggregates      │
+│                    core.py        CarbonMarket dataclass                │
+│  participant/      compliance.py  cost minimisation                     │
+│                    models.py      MarketParticipant, TechnologyOption   │
+│                    technology.py  technology-switching helpers           │
+│  analysis/         calibration.py Nelder-Mead slope fitting            │
+│                    batch.py       cartesian-product sweep runner        │
+│                    csv_import.py  CSV → config converter                │
+│                    narrative.py   rule-based text summary               │
+│  costs.py          linear and piecewise MAC factories                   │
+│  expectations.py   shim → solvers/expectations                         │
+│  msr.py            shim → solvers/msr                                  │
+│  config.py         path configuration (EXAMPLES_DIR, etc.)             │
+└──────────────────────────────────────────────────────────────────────────┘
+                             │
+┌───────────────────────────▼──────────────────────────────────────────────┐
+│  Storage                                                                 │
+│  examples/         pre-built JSON scenario files                        │
+│  user-scenarios/   user-saved scenario files (runtime)                  │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-| Layer | Technology | Role |
+### File and layer reference
+
+| Path | Layer | Role |
 |---|---|---|
-| UI | React 18, Vite, custom SVG charts | Scenario editor, interactive charts, results display |
-| API | Falcon WSGI | `/api/run`, `/api/templates`, `/api/save-scenario` |
-| Solver | NumPy, SciPy | Market equilibrium + participant cost minimisation |
+| `src/ets/participant/models.py` | 1 | `MarketParticipant`, `TechnologyOption`, `ComplianceOutcome` dataclasses |
+| `src/ets/participant/compliance.py` | 1 | Cost minimisation; abatement, banking, borrowing, penalty logic |
+| `src/ets/participant/technology.py` | 1 | Technology-switching helpers |
+| `src/ets/market/core.py` | 2 | `CarbonMarket` — holds participants, cap, auction params |
+| `src/ets/market/equilibrium.py` | 2 | `solve_equilibrium()` — Brent's method root finder |
+| `src/ets/market/results.py` | 2 | `participant_results()`, `scenario_summary()` — CBAM, Scope 2, sector aggregation |
+| `src/ets/solvers/simulation.py` | 3 | `run_simulation()`, `solve_scenario_path()` — competitive path |
+| `src/ets/solvers/hotelling.py` | 3 | `solve_hotelling_path()` — Hotelling shadow-price bisection |
+| `src/ets/solvers/nash.py` | 3 | `solve_nash_path()` — Nash-Cournot best-response iteration |
+| `src/ets/solvers/expectations.py` | 3 | `derive_expected_prices()` — four expectation rules |
+| `src/ets/solvers/msr.py` | 3 | `MSRState` — Market Stability Reserve accumulator |
+| `src/ets/config_io/normalize.py` | config | JSON field normalisation and config-time validation |
+| `src/ets/config_io/builder.py` | config | `build_markets_from_config()` — trajectory application, OBA, sector derivation |
+| `src/ets/config_io/templates.py` | config | Blank config scaffolding |
+| `src/ets/analysis/calibration.py` | analysis | Nelder-Mead MACC slope fitting |
+| `src/ets/analysis/batch.py` | analysis | Cartesian-product parameter sweep |
+| `src/ets/analysis/csv_import.py` | analysis | CSV → ETS config conversion |
+| `src/ets/analysis/narrative.py` | analysis | Rule-based plain-language summary |
+| `src/ets/web/handlers.py` | web | HTTP request handlers, route dispatch |
+| `src/ets/web/server.py` | web | `ThreadingHTTPServer` launcher |
+| `src/ets/costs.py` | shared | `linear_abatement_factory`, `piecewise_abatement_factory` |
 
 ---
 
-## Project structure
+## Modelling Approaches
+
+The `model_approach` field on a scenario selects the price-formation mechanism. All three approaches share the same Layer 1 (participant compliance optimisation) and Layer 2 (market clearing) — they differ in how the price path across years is determined.
+
+### Competitive (default)
 
 ```
-particalequlibrium/
-├── api/index.py               # Vercel WSGI entry point
-├── app.py                     # Local dev entry point
-├── src/ets/
-│   ├── participant.py         # Layer 1 — participant cost minimisation
-│   ├── market.py              # Layer 2 — market equilibrium solver
-│   ├── simulation.py          # Layer 3 — multi-year path runner
-│   ├── expectations.py        # Expectation-formation rules
-│   ├── costs.py               # MAC function factories
-│   ├── hotelling.py           # Hotelling Rule solver (shadow price bisection)
-│   ├── nash.py                # Nash-Cournot best-response solver
-│   ├── msr.py                 # Market Stability Reserve
-│   ├── scenarios.py           # JSON config → CarbonMarket factory
-│   ├── server.py              # Falcon WSGI app + route registration
-│   ├── webapp.py              # API request handlers
-│   └── config.py              # Config loading & validation
-├── frontend/
-│   ├── src/
-│   │   ├── app.jsx            # Root component, global state
-│   │   └── components/        # Views, shared components, charts
-│   ├── public/styles.css
-│   └── dist/                  # Built assets (committed for Vercel)
-├── templates/                 # Built-in scenario JSON files
-├── docs/                      # Technical documentation
-└── vercel.json
+model_approach: "competitive"
+```
+
+All participants are price-takers. Each year, Brent's method finds `P*` such that:
+
+```
+Σᵢ net_demand_i(P*) = auction_offered
+```
+
+With `perfect_foresight` expectations, a fixed-point iteration ensures `E[P_{t+1}] = P*_{t+1}`. This is the standard partial-equilibrium ETS model and the appropriate default for most policy analysis.
+
+**When to use:** Standard policy simulation, CBAM analysis, banking/borrowing dynamics, MSR impact assessment.
+
+### Hotelling Rule
+
+```
+model_approach: "hotelling"
+```
+
+Allowances are treated as an exhaustible resource. The no-arbitrage condition requires the net price (royalty) to grow at the effective discount rate:
+
+```
+P*(t) = λ · (1 + r + ρ)^(t − t₀)
+```
+
+where `λ` is the shadow price (royalty) at the base year `t₀`, `r` is the risk-free discount rate, and `ρ` is an optional policy risk premium. `λ` is found by bisection so that cumulative residual emissions equal the cumulative `carbon_budget`.
+
+**When to use:** Optimal exhaustible-resource benchmarking, theory comparison, calibration of observed price paths that rise faster than the risk-free rate.
+
+### Nash-Cournot
+
+```
+model_approach: "nash_cournot"
+```
+
+Strategic participants named in `nash_strategic_participants` internalise their own price impact. The equilibrium satisfies: no strategic participant `i` can reduce total compliance cost by unilaterally changing abatement `aᵢ`. Non-listed participants remain price-takers. Uses Jacobi best-response iteration starting from the competitive equilibrium.
+
+**When to use:** Markets with a small number of dominant emitters or buyers; assessment of market-power distortion on price formation.
+
+### Run All
+
+```
+model_approach: "all"
+```
+
+Runs competitive, Hotelling, and Nash-Cournot in parallel on the same config and returns all three in a single response, allowing direct model comparison without re-submitting the scenario three times.
+
+---
+
+## Key Features
+
+| Feature | Config field(s) | Description |
+|---|---|---|
+| Multi-year simulation | `scenarios[].years[]` | Sequential year execution with bank balance propagation |
+| Banking | `banking_allowed: true` | Carry surplus allowances to future years |
+| Borrowing | `borrowing_allowed: true`, `borrowing_limit` | Advance future allocations to current year |
+| Rational expectations | `expectation_rule: "perfect_foresight"` | Fixed-point iteration until realised = expected prices |
+| Hotelling path | `model_approach: "hotelling"` | Prices rise at `r+ρ` per year; `λ` bisected to budget |
+| Nash-Cournot | `model_approach: "nash_cournot"` | Strategic participants internalise price impact |
+| CBAM liability | `eua_price`, `cbam_export_share` | Post-equilibrium border adjustment cost |
+| Multi-jurisdiction CBAM | `cbam_jurisdictions[]` | Per-jurisdiction price gap liability |
+| EUA ensemble | `eua_price_ensemble` | Fan-chart CBAM across multiple EUA forecasts |
+| Scope 2 / indirect | `electricity_consumption`, `grid_emission_factor` | Indirect emissions and Scope 2 CBAM |
+| Output-Based Allocation | `production_output`, `benchmark_emission_intensity` | OBA free allocation overrides ratio |
+| BAU trajectory | `initial_emissions_trajectory` | Linearly interpolate BAU emissions per participant |
+| Grid factor trajectory | `grid_emission_factor_trajectory` | Linearly interpolate grid intensity per participant |
+| Sector-level caps | `sectors[]` with `cap_trajectory`, `auction_share_trajectory` | Derive total cap and free pool from per-sector definitions |
+| Policy cap trajectory | `cap_trajectory` | Smoothly declining total cap without per-year repetition |
+| Price floor/ceiling | `price_floor_trajectory`, `price_ceiling_trajectory` | Rising price bounds without per-year repetition |
+| Free allocation phase-out | `free_allocation_trajectories[]` | Per-participant ratio phase-out trajectory |
+| Market Stability Reserve | `msr_enabled: true` | Withhold/release allowances based on aggregate bank |
+| Piecewise MAC | `abatement_type: "piecewise"`, `mac_blocks[]` | Step-function marginal abatement cost curve |
+| Technology switching | `technology_options[]` | Endogenous technology choice via SLSQP portfolio optimisation |
+| Auction design | `auction_reserve_price`, `minimum_bid_coverage` | Reserve price and minimum coverage rules |
+| Calibration | `POST /api/calibrate` | Nelder-Mead fit of MAC slopes to observed prices |
+| Batch sweep | `POST /api/batch-run` | Cartesian-product parameter sensitivity |
+| CSV import | `POST /api/import-csv` | CSV table to ETS config JSON |
+| Narrative summary | `POST /api/narrative` | Rule-based plain-language interpretation |
+| Auction revenue tracker | auto-computed | Domestic retained, CBAM foregone, potential if KAU=EUA |
+
+---
+
+## Config Schema Quick Reference
+
+### Scenario-level fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | required | Scenario identifier |
+| `model_approach` | `"competitive"` \| `"hotelling"` \| `"nash_cournot"` \| `"all"` | `"competitive"` | Price-formation mechanism |
+| `discount_rate` | float | `0.04` | Annual discount rate `r` for Hotelling formula |
+| `risk_premium` | float | `0.0` | Policy risk premium `ρ` added to `r` in Hotelling formula |
+| `nash_strategic_participants` | string[] | `[]` | Participant names treated as strategic in Nash-Cournot |
+| `msr_enabled` | bool | `false` | Enable Market Stability Reserve |
+| `msr_upper_threshold` | float | `200.0` | Bank (Mt) above which withholding fires |
+| `msr_lower_threshold` | float | `50.0` | Bank (Mt) below which release fires |
+| `msr_withhold_rate` | float | `0.12` | Fraction of auction_offered withheld per year |
+| `msr_release_rate` | float | `50.0` | Mt released per year from reserve |
+| `msr_cancel_excess` | bool | `false` | Permanently cancel pool above `msr_cancel_threshold` |
+| `msr_cancel_threshold` | float | `400.0` | Pool level (Mt) above which excess is cancelled |
+| `cap_trajectory` | object | `{}` | Scenario-wide linearly declining total cap |
+| `price_floor_trajectory` | object | `{}` | Linearly rising price floor |
+| `price_ceiling_trajectory` | object | `{}` | Linearly rising price ceiling |
+| `free_allocation_trajectories` | array | `[]` | Per-participant free ratio phase-out |
+| `sectors` | array | `[]` | Sector objects with cap and auction share trajectories |
+| `years` | array | required | Year config objects |
+
+### Year-level fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `year` | string | required | Year label (e.g. `"2030"`) |
+| `total_cap` | float | `0.0` | Annual emissions cap (Mt CO₂e) |
+| `auction_mode` | `"explicit"` \| `"derive_from_cap"` | `"explicit"` | How auction volume is determined |
+| `auction_offered` | float | `0.0` | Volume offered at auction (Mt) |
+| `reserved_allowances` | float | `0.0` | Withheld from market; count toward cap |
+| `cancelled_allowances` | float | `0.0` | Permanently retired; count toward cap |
+| `auction_reserve_price` | float | `0.0` | Minimum clearing price |
+| `minimum_bid_coverage` | float [0,1] | `0.0` | Min fraction of offered volume that must be bid |
+| `unsold_treatment` | `"reserve"` \| `"cancel"` \| `"carry_forward"` | `"reserve"` | Disposition of unsold allowances |
+| `price_lower_bound` | float | `0.0` | Price floor for equilibrium solver |
+| `price_upper_bound` | float | `100.0` | Price ceiling for equilibrium solver |
+| `banking_allowed` | bool | `false` | Allow surplus carry-forward |
+| `borrowing_allowed` | bool | `false` | Allow deficit carry-back |
+| `borrowing_limit` | float | `0.0` | Maximum borrow volume (Mt) |
+| `expectation_rule` | string | `"next_year_baseline"` | Future price expectation method |
+| `manual_expected_price` | float | `0.0` | Price used when `expectation_rule = "manual"` |
+| `carbon_budget` | float | `0.0` | Cumulative budget for Hotelling bisection |
+| `eua_price` | float | `0.0` | EU ETS reference price for CBAM |
+| `eua_prices` | object | `{}` | Per-jurisdiction prices, e.g. `{"EU": 72, "UK": 58}` |
+| `eua_price_ensemble` | object | `{}` | Named EUA forecasts for CBAM fan chart |
+| `participants` | array | required | Participant config objects |
+
+### Participant-level fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | required | Unique participant identifier |
+| `sector_group` | string | `""` | Sector label for aggregated reporting |
+| `sector_allocation_share` | float [0,1] | `0.0` | This participant's share of its sector's free pool |
+| `initial_emissions` | float ≥ 0 | `0.0` | Gross BAU emissions (Mt CO₂e) |
+| `initial_emissions_trajectory` | object | `{}` | Linearly interpolated BAU over years |
+| `free_allocation_ratio` | float [0,1] | `0.0` | Share of initial emissions covered for free |
+| `penalty_price` | float > 0 | `100.0` | Fine per uncovered tonne (₩/t) |
+| `abatement_type` | `"linear"` \| `"piecewise"` \| `"threshold"` | `"linear"` | MAC model |
+| `max_abatement` | float ≥ 0 | `0.0` | Maximum reducible emissions (Mt) |
+| `cost_slope` | float > 0 | `1.0` | Slope `σ` of linear MAC (₩/t per Mt) |
+| `threshold_cost` | float ≥ 0 | `0.0` | Switching price for threshold MAC |
+| `mac_blocks` | array | `[]` | Piecewise MAC blocks (sorted by marginal_cost) |
+| `production_output` | float ≥ 0 | `0.0` | Annual physical output (Mt product/yr) |
+| `benchmark_emission_intensity` | float ≥ 0 | `0.0` | OBA benchmark (tCO₂/unit product) |
+| `cbam_export_share` | float [0,1] | `0.0` | Fraction exported to single CBAM market |
+| `cbam_coverage_ratio` | float [0,1] | `1.0` | Fraction of exports within CBAM scope |
+| `cbam_jurisdictions` | array | `[]` | Multi-jurisdiction CBAM list |
+| `electricity_consumption` | float ≥ 0 | `0.0` | Annual electricity use (MWh) |
+| `grid_emission_factor` | float ≥ 0 | `0.0` | Grid carbon intensity (tCO₂/MWh) |
+| `grid_emission_factor_trajectory` | object | `{}` | Linearly interpolated grid factor over years |
+| `scope2_cbam_coverage` | float [0,1] | `0.0` | Fraction of indirect emissions in CBAM scope |
+| `technology_options` | array | `[]` | Alternative production technologies |
+
+---
+
+## Solver Settings
+
+Nine solver parameters, all set at the scenario level, control numerical precision and iteration limits across the three solvers.
+
+| Parameter | Default | Controls |
+|---|---|---|
+| `solver_competitive_max_iters` | `25` | Maximum perfect-foresight fixed-point iterations before declaring convergence |
+| `solver_competitive_tolerance` | `0.001` | Convergence threshold: max price change between iterations (₩/t) |
+| `solver_hotelling_max_bisection_iters` | `80` | Maximum bisection steps when finding shadow price `λ` |
+| `solver_hotelling_max_lambda_expansions` | `20` | Maximum attempts to expand the `[λ_low, λ_high]` bracket |
+| `solver_hotelling_convergence_tol` | `0.0001` | Relative tolerance on cumulative emissions: `|Σ_e − budget| / budget` |
+| `solver_nash_price_step` | `0.5` | Finite-difference step (₩/t) for estimating `dP/dQ` price impact |
+| `solver_nash_max_iters` | `120` | Maximum Jacobi best-response iterations per year |
+| `solver_nash_convergence_tol` | `0.001` | Convergence threshold: max abatement change (Mt) between iterations |
+| `solver_penalty_price_multiplier` | `1.25` | Upper bracket = `max(penalty_price) × multiplier` for Brent's method |
+
+---
+
+## Analysis Tools
+
+Four tools in `src/ets/analysis/` extend the core simulator with higher-level workflows.
+
+### Model Calibration (`/api/calibrate`)
+
+Fits `abatement_cost_slope` parameters for named participants to minimise MSE between modelled equilibrium prices and a set of observed historical prices. Uses Nelder-Mead optimisation (scipy).
+
+**Request:** `POST /api/calibrate` with JSON body:
+
+```json
+{
+  "config": { "scenarios": [...] },
+  "observed_prices": { "2026": 18.5, "2027": 22.0, "2028": 25.5 },
+  "participant_names": ["POSCO", "Hyundai Steel"],
+  "initial_slopes": [6.5, 7.0],
+  "max_iter": 500
+}
+```
+
+**Response:** `calibrated_slopes`, `final_mse`, `iterations`, `success`, `modelled_prices`, `observed_prices`.
+
+### Batch / Sensitivity Runner (`/api/batch-run`)
+
+Sweeps one or more parameters over cartesian product of values and collects per-run summaries. Uses JSON-path notation with `[*]` wildcard for year arrays.
+
+**Request:** `POST /api/batch-run`:
+
+```json
+{
+  "config": { "scenarios": [...] },
+  "sweeps": [
+    { "path": "scenarios[0].years[*].eua_price", "values": [40, 60, 80, 100] },
+    { "path": "scenarios[0].discount_rate", "values": [0.03, 0.04, 0.05] }
+  ]
+}
+```
+
+**Response:** `runs` (one per combination), `sweep_axes`, `n_runs`, `n_errors`.
+
+### CSV Import (`/api/import-csv`)
+
+Converts a CSV table (one row per participant per year) into a valid ETS config JSON. Required columns: `year`, `participant_name`. Optional columns match participant field names.
+
+**Request:** `POST /api/import-csv` with `multipart/form-data` containing `file` field (CSV text) and optional `scenario_name`.
+
+### Narrative Summary (`/api/narrative`)
+
+Generates a plain-language interpretation of simulation results: price trend, cumulative abatement, CBAM exposure, and domestic auction revenue.
+
+**Request:** `POST /api/narrative`:
+
+```json
+{
+  "results": [ { "year": "2026", "summary": { "Equilibrium Carbon Price": 18500 } } ],
+  "scenario_name": "K-ETS Baseline"
+}
+```
+
+**Response:** `{ "narrative": "The equilibrium carbon price rises from ₩18,500/t in 2026 ..." }`
+
+---
+
+## GUI Walkthrough
+
+### Step 1 — Scenario setup
+
+Set `name`, `model_approach`, `discount_rate` (Hotelling), `risk_premium` (Hotelling), `nash_strategic_participants` (Nash). Enable MSR parameters if needed. All fields are in the collapsible **Scenario Settings** group.
+
+### Step 2 — Year configuration
+
+Each year is a collapsible panel. Set `total_cap`, `auction_mode`, `auction_offered`, price bounds, banking/borrowing flags, and `expectation_rule`. Collapsible groups within each year: **Auction Design**, **Price Bounds**, **Banking & Borrowing**, **Expectation Settings**, **CBAM / EUA Prices**.
+
+### Step 3 — Participant configuration
+
+Add participants via the **Add Participant** button. Collapsible groups per participant: **Emissions & Allocation**, **MAC / Abatement**, **CBAM Exposure**, **Scope 2 / Indirect**, **Output-Based Allocation (OBA)**, **Technology Options**.
+
+The MAC block editor supports visual entry of piecewise step-function cost curves. Each block defines an `amount` (Mt CO₂e abatable at this cost) and `marginal_cost` (₩/t). Blocks must be entered in non-decreasing cost order.
+
+The technology transition wizard guides creation of `technology_options` — alternative production modes with their own emission profiles, MAC curves, fixed adoption costs, and maximum activity shares.
+
+### Step 4 — Run and explore
+
+Click **Run Simulation**. The output panels show:
+
+- **Scenario summary table**: one row per scenario-year with all aggregate statistics
+- **Market clearing chart**: demand curve and equilibrium price for each year
+- **Annual emissions trajectory**: abatement and residual emissions over time
+- **Participant panel**: individual cost breakdown, CBAM liability, bank balances
+- **Narrative**: plain-language interpretation (auto-generated)
+
+---
+
+## Output Columns Reference
+
+### Participant results (one row per participant per year)
+
+| Column | Description |
+|---|---|
+| `Scenario` | Scenario name |
+| `Year` | Year label |
+| `Participant` | Participant name |
+| `Sector Group` | Sector label from `sector_group` |
+| `Chosen Technology` | Active technology name or "Mixed Portfolio ..." |
+| `Technology Mix` | Semicolon-separated `name:share` pairs |
+| `Initial Emissions` | BAU gross emissions (Mt CO₂e) |
+| `Free Allocation` | Free allowances received (Mt) |
+| `Abatement` | Emissions reduced (Mt) |
+| `Residual Emissions` | Post-abatement direct emissions (Mt) |
+| `Allowance Buys` | Allowances purchased (Mt) |
+| `Allowance Sells` | Allowances sold (Mt) |
+| `Net Allowances Traded` | Buys minus sells (Mt); positive = net buyer |
+| `Penalty Emissions` | Emissions not covered, subject to penalty (Mt) |
+| `Starting Bank Balance` | Allowances carried in from prior year (Mt) |
+| `Ending Bank Balance` | Allowances carried forward to next year (Mt) |
+| `Banked Allowances` | `max(0, ending bank balance)` (Mt) |
+| `Borrowed Allowances` | `max(0, -ending bank balance)` (Mt) |
+| `Expected Future Price` | Price used for banking/borrowing decision (₩/t) |
+| `Fixed Technology Cost` | Fixed adoption cost of chosen technology (₩M) |
+| `Abatement Cost` | Variable cost of abatement (₩M) |
+| `Allowance Cost` | Cost of purchased allowances at equilibrium price (₩M) |
+| `Penalty Cost` | Fine for uncovered emissions (₩M) |
+| `Sales Revenue` | Revenue from sold allowances (₩M) |
+| `Total Compliance Cost` | Sum of costs minus sales revenue (₩M) |
+| `EUA Price` | EU ETS reference price used for CBAM (€/t) |
+| `CBAM Gap` | `max(0, EUA_price − P*)` (₩/t) |
+| `CBAM Export Share` | Aggregate export share fraction |
+| `CBAM Liable Emissions` | Residual emissions subject to CBAM (Mt) |
+| `CBAM Liability` | Total CBAM border adjustment (₩M) |
+| `Total Cost incl. CBAM` | Total Compliance Cost + CBAM Liability (₩M) |
+| `Electricity Consumption` | Annual electricity use (MWh) |
+| `Grid Emission Factor` | Grid carbon intensity (tCO₂/MWh) |
+| `Indirect Emissions` | `electricity × grid_factor` (Mt CO₂e) |
+| `Scope 2 CBAM Coverage` | Fraction of indirect emissions in CBAM scope |
+| `Scope 2 CBAM Liability` | CBAM liability on indirect emissions (₩M) |
+| `CBAM Liability (X)` | Per-jurisdiction CBAM when `cbam_jurisdictions` used |
+| `CBAM Gap (X)` | Per-jurisdiction price gap |
+| `CBAM Liability (source)` | EUA ensemble CBAM under named forecast |
+
+### Scenario summary (one row per scenario-year)
+
+| Column | Description |
+|---|---|
+| `Equilibrium Carbon Price` | Market-clearing price P* (₩/t) |
+| `Total Abatement` | Sum across all participants (Mt) |
+| `Total Allowance Buys / Sells` | Gross market volume (Mt) |
+| `Total Penalty Emissions` | Uncovered emissions in penalty channel (Mt) |
+| `Auction Offered / Sold` | Supply and actual clearing volume (Mt) |
+| `Unsold Allowances` | Allowances below reserve price (Mt) |
+| `Auction Coverage Ratio` | Sold / Offered |
+| `Total Auction Revenue` | `P* × auction_sold` (₩M) |
+| `Total Banked / Borrowed Allowances` | System-wide bank dynamics (Mt) |
+| `MSR Withheld / Released / Reserve Pool` | MSR state when enabled (Mt) |
+| `Total CBAM Liability` | System-wide border adjustment (₩M) |
+| `Domestic Retained Revenue` | Auction revenue remaining in Korea (₩M) |
+| `CBAM Foregone Revenue` | CBAM that flows to EU rather than Korea (₩M) |
+| `Potential Revenue if KAU=EUA` | Domestic revenue if price equalled EUA (₩M) |
+| `{Sector} Total Abatement` | Sector-group aggregate (Mt) |
+| `{Sector} P10/P50/P90 Compliance Cost` | Distribution across participants in sector (₩M) |
+
+---
+
+## Documentation Index
+
+| File | What it covers |
+|---|---|
+| `docs/algorithm-overview.md` | Three-layer architecture, all solvers (competitive, Hotelling, Nash), MSR, CBAM, validation rules, execution flow |
+| `docs/data-model.md` | Every config field — type, default, validation, example |
+| `docs/multi-year-simulation.md` | Banking, borrowing, expectation rules, BAU trajectory, grid factor trajectory, sector dynamics, auction revenue decomposition |
+| `docs/oba-allocation.md` | Output-Based Allocation concept, formula, override hierarchy, worked steel example |
+| `docs/sector-config.md` | Sector-level caps, auction share derivation, per-participant allocation from sector pool, worked two-participant example |
+| `docs/analysis-tools.md` | Calibration, batch runner, CSV import, narrative — APIs, request/response schemas, algorithms |
+| `docs/mac-abatement.md` | Linear, piecewise, and threshold MAC models with cost derivations |
+| `docs/market-equilibrium.md` | Brent's method details, auction rules, bracketing procedure |
+| `docs/technology-transition.md` | Technology options, SLSQP portfolio optimisation, fixed-cost switching |
+
+---
+
+## Project Structure
+
+```
+src/ets/
+  participant/
+    models.py          MarketParticipant, TechnologyOption, ComplianceOutcome
+    compliance.py      Cost minimisation, abatement, banking, penalty logic
+    technology.py      Technology-switching helpers
+  market/
+    core.py            CarbonMarket dataclass
+    equilibrium.py     Brent's method root finder
+    results.py         participant_results(), scenario_summary()
+  config_io/
+    normalize.py       Field normalisation and config-time validation
+    builder.py         build_markets_from_config(), trajectory/OBA/sector derivation
+    templates.py       Blank config scaffolding
+  solvers/
+    simulation.py      run_simulation(), competitive path, perfect-foresight iteration
+    hotelling.py       Hotelling shadow-price bisection
+    nash.py            Nash-Cournot best-response iteration
+    expectations.py    derive_expected_prices(), four expectation rules
+    msr.py             MSRState accumulator
+  web/
+    server.py          ThreadingHTTPServer launcher
+    handlers.py        Route dispatch, dashboard payload builder
+  analysis/
+    calibration.py     calibrate_slopes() — Nelder-Mead MAC fitting
+    batch.py           run_batch() — cartesian-product sweep
+    csv_import.py      csv_to_config() — CSV to ETS config
+    narrative.py       generate_narrative() — plain-language summary
+  expectations.py      Shim → solvers/expectations (backward compat)
+  msr.py               Shim → solvers/msr (backward compat)
+  costs.py             linear_abatement_factory, piecewise_abatement_factory
+  config.py            Path constants (EXAMPLES_DIR, USER_SCENARIOS_DIR, etc.)
+  server.py            Shim → web/server (backward compat)
+  participant.py       Shim → participant/ (backward compat)
+  market.py            Shim → market/ (backward compat)
+
+api/
+  index.py             Vercel serverless shim — wraps WSGI app
+
+frontend/
+  src/
+    app.jsx            Root component — tab routing
+    components/
+      Editor.jsx           Scenario builder — collapsible config panels
+      AppViews.jsx          Output views coordinator
+      AppShared.jsx         Shared layout, toolbar
+      MarketChart.jsx       Demand curve and equilibrium price chart
+      AnnualMarketChart.jsx Multi-year price trajectory chart
+      AnnualEmissionsChart.jsx Emissions trajectory chart
+      TrajectoryChart.jsx   Policy trajectory visualisation
+      ParticipantPanel.jsx  Participant-level cost breakdown
+      ParticipantMacChart.jsx MAC curve visualisation
+      MarketYearGallery.jsx Year-gallery navigation
+      GuideView.jsx         In-app user guide
+
+examples/             Pre-built JSON scenario files
+user-scenarios/       User-saved scenarios (runtime, gitignored)
+docs/                 Extended documentation
 ```
 
 ---
 
 ## Limitations
 
-- No endogenous production/output decision (emissions are exogenous)
-- Technology switching is per-year discrete; no irreversibility constraint across years unless modelled manually via `max_activity_share` progression
-- CBAM does not feed back into market clearing — it is a post-equilibrium accounting entry
-- No benchmark-based free allocation; only ratio-based
-- No BAU trajectory auto-generation; emissions paths must be set manually per year
-- Not calibrated to any real national ETS out of the box
+- **Single commodity:** Only CO₂-equivalent emissions are modelled. Multi-pollutant or multi-sector general-equilibrium feedback is not captured.
+- **Static abatement curves:** MAC parameters do not evolve endogenously. Technological learning curves must be specified explicitly via trajectories.
+- **No financial intermediaries:** Banks, brokers, and speculative traders are not modelled. Banking is purely a compliance firm decision.
+- **No macroeconomic feedback:** Carbon costs do not affect output prices, GDP, or sectoral output. The model is partial-equilibrium by design.
+- **Calibration is single-scenario:** The `/api/calibrate` endpoint calibrates `abatement_cost_slope` for linear MAC only; piecewise blocks are not calibrated automatically.
+- **Nash-Cournot convergence:** The Jacobi iteration may not converge for all market configurations; the solver logs a warning and uses its best approximation if the iteration limit is reached.
+- **Integer compliance:** The model operates in continuous tonnes; compliance is not restricted to integer lots.
